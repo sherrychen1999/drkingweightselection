@@ -586,8 +586,15 @@ function renderUploaded() {
   const cnt  = document.getElementById('uploadCount');
   const sel  = document.getElementById('rangeFilter');
 
-  if (!dashData || !dashData.uploadList) {
+  if (!dashData) {
     wrap.innerHTML = '<div style="color:#94a3b8;font-size:12.5px;padding:8px 0">資料庫載入中…</div>';
+    cnt.textContent = '— / 13';
+    cnt.className = 'badge warn';
+    sel.innerHTML = '';
+    return;
+  }
+  if (!dashData.uploadList) {
+    wrap.innerHTML = '<div style="color:#b45309;font-size:12.5px;padding:8px 0;background:#fef3c7;padding:10px 12px;border-radius:6px">⚠️ 後端為舊版，請更新 Apps Script 程式碼並重新部署</div>';
     cnt.textContent = '— / 13';
     cnt.className = 'badge warn';
     sel.innerHTML = '';
