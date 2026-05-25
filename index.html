@@ -1,0 +1,1435 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>減重特定申報資料篩選器</title>
+<script>
+// SheetJS 多 CDN 後援載入：依序試 cdnjs / jsdelivr / unpkg，任一成功即停止
+(function loadXLSX() {
+  const cdns = [
+    'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
+    'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',
+    'https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js'
+  ];
+  function tryNext(i) {
+    if (i >= cdns.length) {
+      window.__XLSX_LOAD_FAILED__ = true;
+      console.error('All XLSX CDNs failed');
+      return;
+    }
+    const s = document.createElement('script');
+    s.src = cdns[i];
+    s.onload = () => console.log('XLSX loaded from', cdns[i]);
+    s.onerror = () => { console.warn('XLSX failed:', cdns[i]); tryNext(i + 1); };
+    document.head.appendChild(s);
+  }
+  tryNext(0);
+})();
+</script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+    background: linear-gradient(135deg, #f6f9fc 0%, #eef2f7 100%);
+    margin: 0;
+    padding: 28px 18px 60px;
+    min-height: 100vh;
+    color: #1f2937;
+  }
+  .container { max-width: 880px; margin: 0 auto; }
+  h1 { color: #0f172a; font-size: 24px; margin: 0 0 4px; }
+  .subtitle { color: #64748b; font-size: 13px; margin-bottom: 18px; }
+
+  .card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 22px;
+    box-shadow: 0 4px 18px rgba(15,23,42,.06);
+    margin-bottom: 14px;
+  }
+  .card h2 {
+    font-size: 14px; color: #0f172a; margin: 0 0 12px;
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  /* Settings */
+  .settings { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; }
+  .settings input {
+    padding: 9px 12px; border: 1px solid #cbd5e1; border-radius: 8px; font-size: 13px;
+    font-family: ui-monospace, Menlo, monospace;
+  }
+  .settings input:focus { outline: 0; border-color: #2563eb; }
+  .btn {
+    background: #2563eb; color: #fff; padding: 9px 16px; border-radius: 8px;
+    border: 0; cursor: pointer; font-size: 13px; font-weight: 600;
+    transition: background .15s;
+  }
+  .btn:hover { background: #1d4ed8; }
+  .btn.secondary { background: #e2e8f0; color: #334155; }
+  .btn.secondary:hover { background: #cbd5e1; }
+  .btn:disabled { background: #cbd5e1; cursor: not-allowed; }
+  .badge {
+    display: inline-block; padding: 2px 9px; border-radius: 999px;
+    font-size: 11px; font-weight: 600;
+  }
+  .badge.ok { background: #dcfce7; color: #166534; }
+  .badge.warn { background: #fef3c7; color: #92400e; }
+  .badge.err { background: #fee2e2; color: #991b1b; }
+
+  /* Dropzone — 完全無框，純背景 + 圖示 */
+  .dropzone {
+    position: relative;
+    border: 0;
+    border-radius: 12px;
+    padding: 44px 24px 36px;
+    text-align: center;
+    cursor: pointer;
+    transition: background .25s cubic-bezier(.4,0,.2,1);
+    background: transparent;
+  }
+  .dropzone:hover {
+    background: rgba(37,99,235,.04);
+  }
+  .dropzone.drag {
+    background: rgba(37,99,235,.10);
+  }
+  .dropzone .dz-icon {
+    width: 64px; height: 64px;
+    margin: 0 auto 14px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    color: #fff;
+    box-shadow: 0 8px 22px rgba(37,99,235,.28), 0 2px 6px rgba(37,99,235,.15);
+    transition: transform .25s;
+  }
+  .dropzone:hover .dz-icon, .dropzone.drag .dz-icon { transform: translateY(-2px) scale(1.04); }
+  .dropzone .dz-icon svg { width: 30px; height: 30px; }
+  .dropzone .dz-title {
+    font-size: 17px; color: #0f172a; font-weight: 700;
+    margin: 0 0 6px;
+  }
+  .dropzone .dz-sub {
+    margin: 0; color: #64748b; font-size: 13px; line-height: 1.6;
+  }
+  .dropzone .dz-sub code {
+    background: #e0e7ff; color: #3730a3; padding: 1px 7px;
+    border-radius: 5px; font-family: ui-monospace, Menlo, monospace;
+    font-size: 12px;
+  }
+  .dropzone .dz-hint {
+    margin-top: 14px; display: block;
+    color: #94a3b8; font-size: 11.5px;
+  }
+  input[type=file] { display: none; }
+
+  /* 批次區塊 */
+  .batch-card {
+    margin-top: 16px;
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .batch-head {
+    padding: 12px 16px;
+    background: linear-gradient(180deg, #f8fafc 0%, #ffffff 100%);
+    border-bottom: 1px solid #e2e8f0;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .batch-head .title { font-size: 13.5px; font-weight: 700; color: #0f172a; }
+  .batch-progressbar {
+    height: 8px; background: #e2e8f0; border-radius: 999px; overflow: hidden;
+    flex: 1; margin: 0 12px;
+  }
+  .batch-progressbar > div {
+    height: 100%;
+    background: linear-gradient(90deg, #3b82f6 0%, #6366f1 100%);
+    border-radius: 999px;
+    transition: width .35s cubic-bezier(.4,0,.2,1);
+  }
+  .batch-body { padding: 4px 0; }
+  .batch-row {
+    display: grid;
+    grid-template-columns: 1.7fr 0.9fr 1fr 0.7fr 0.7fr 0.7fr 1.3fr;
+    gap: 8px; align-items: center;
+    padding: 9px 16px;
+    font-size: 12.5px;
+    border-bottom: 1px solid #f1f5f9;
+    transition: background .15s;
+  }
+  .batch-row:last-child { border-bottom: 0; }
+  .batch-row.head {
+    background: #f8fafc;
+    font-weight: 600; color: #64748b; font-size: 11.5px;
+    text-transform: none;
+  }
+  .batch-row.pending { color: #94a3b8; }
+  .batch-row.running { background: #fffbeb; }
+  .batch-row.ok      { background: #f0fdf4; }
+  .batch-row.dup     { background: #fffbeb; }
+  .batch-row.err     { background: #fef2f2; }
+  .batch-row .fn {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 11px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .batch-row .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .status-dot {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11.5px; font-weight: 600;
+  }
+  .status-dot .dot {
+    width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
+  }
+  .status-dot.pending .dot { background: #cbd5e1; }
+  .status-dot.pending     { color: #94a3b8; }
+  .status-dot.running .dot { background: #f59e0b; animation: pulse 1s infinite; }
+  .status-dot.running     { color: #b45309; }
+  .status-dot.ok .dot { background: #22c55e; }
+  .status-dot.ok      { color: #15803d; }
+  .status-dot.dup .dot { background: #f59e0b; }
+  .status-dot.dup     { color: #b45309; }
+  .status-dot.err .dot { background: #ef4444; }
+  .status-dot.err     { color: #b91c1c; }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .3; }
+  }
+
+  /* Result block */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-top: 6px;
+  }
+  .summary-block {
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .summary-block .label { font-size: 11px; color: #64748b; }
+  .summary-block .value { font-size: 17px; color: #0f172a; font-weight: 700; margin-top: 2px; }
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin: 14px 0 8px;
+  }
+  .stat {
+    background: #f1f5f9; border-radius: 10px; padding: 12px; text-align: center;
+  }
+  .stat .num { font-size: 22px; font-weight: 700; color: #0f172a; }
+  .stat .label { font-size: 11px; color: #64748b; margin-top: 2px; }
+
+  table.dt { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.dt th, table.dt td {
+    border-bottom: 1px solid #e2e8f0;
+    padding: 6px 9px; text-align: left;
+  }
+  table.dt th { background: #f1f5f9; font-weight: 600; }
+  table.dt td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+
+  .section-title {
+    font-weight: 600; margin: 14px 0 6px; color: #0f172a; font-size: 13px;
+  }
+  .rules {
+    font-size: 12.5px; color: #475569; background: #f8fafc;
+    border-left: 3px solid #2563eb; padding: 10px 12px; border-radius: 6px; line-height: 1.7;
+  }
+  .rules code {
+    background: #e2e8f0; padding: 1px 6px; border-radius: 4px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 11.5px;
+  }
+  .uploaded-list {
+    max-height: 220px; overflow: auto; font-size: 12.5px;
+  }
+  .uploaded-list .item {
+    display: grid; grid-template-columns: 1fr auto auto auto;
+    gap: 10px; padding: 6px 8px;
+    border-bottom: 1px solid #f1f5f9;
+    align-items: center;
+  }
+  .uploaded-list .item span:nth-child(1) { font-family: ui-monospace, Menlo, monospace; color: #1e293b; }
+  .uploaded-list .item span:nth-child(2),
+  .uploaded-list .item span:nth-child(3),
+  .uploaded-list .item span:nth-child(4) {
+    color: #64748b; font-size: 12px;
+  }
+  .err { color: #b91c1c; font-size: 13px; margin-top: 8px; }
+  details summary { cursor: pointer; color: #2563eb; font-size: 12.5px; margin: 6px 0; }
+  details .combo-list {
+    max-height: 220px; overflow: auto;
+    background: #f8fafc; border-radius: 6px; padding: 10px 14px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 11.5px;
+    line-height: 1.7; column-count: 3; column-gap: 14px;
+  }
+  .hidden { display: none; }
+  .filename-tag {
+    display: inline-flex; gap: 6px; align-items: center;
+    background: #eff6ff; color: #1d4ed8;
+    padding: 3px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 600;
+  }
+  .progress {
+    height: 6px; background: #e2e8f0; border-radius: 999px; overflow: hidden;
+    margin-top: 6px;
+  }
+  .progress > div {
+    height: 100%; background: #2563eb; transition: width .3s;
+  }
+  .footer {
+    text-align: center; color: #94a3b8; font-size: 11.5px; margin-top: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>減重特定申報資料篩選器</h1>
+  <p class="subtitle">把每個院區的 XLSX 拖進來 → 自動篩選、統計、寫入 Google Sheet 資料庫</p>
+
+  <!-- Sheet 設定（已內建 URL，櫃檯不可動）-->
+  <div class="card" style="padding:12px 22px">
+    <div style="display:flex;align-items:center;gap:10px;font-size:13px;color:#64748b">
+      <span style="font-size:16px">🔒</span>
+      <span>已連線至減重資料庫</span>
+      <span id="connStatus" class="badge ok" style="margin-left:auto">已就緒</span>
+      <button class="btn secondary" id="adminBtn" style="padding:5px 10px;font-size:11.5px"
+              title="管理員：修改 Web App URL">⚙️</button>
+    </div>
+    <div id="adminPanel" class="hidden" style="margin-top:10px;padding-top:10px;border-top:1px solid #e2e8f0">
+      <div style="font-size:12px;color:#92400e;background:#fef3c7;padding:8px 12px;border-radius:6px;margin-bottom:8px">
+        ⚠️ 管理員設定：請僅在重新部署 Apps Script 後改動。櫃檯日常使用請勿動此區。
+      </div>
+      <div class="settings">
+        <input id="endpoint" placeholder="Apps Script Web App URL" />
+        <button class="btn secondary" id="testBtn">測試連線</button>
+        <button class="btn" id="saveBtn">覆寫儲存</button>
+      </div>
+      <div style="font-size:11px;color:#64748b;margin-top:6px">
+        若空白會回退使用內建 URL；按「覆寫儲存」可暫時改用其他 URL（記在本機瀏覽器）。
+      </div>
+    </div>
+  </div>
+
+  <!-- 拖檔區 -->
+  <div class="card" style="padding:18px">
+    <label for="file" id="dz" class="dropzone">
+      <div class="dz-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+      </div>
+      <p class="dz-title">點此選擇或拖曳 XLSX 檔案</p>
+      <p class="dz-sub">
+        可一次選多檔（13 個院區）批次處理<br>
+        檔名請命名為 <code>院區+日期區間.xlsx</code>，例如 <code>三樹0511-0524.xlsx</code>
+      </p>
+      <span class="dz-hint">支援 .xlsx / .xls，拖檔或點擊皆可</span>
+    </label>
+    <input type="file" id="file" accept=".xlsx,.xls,.XLSX,.XLS" multiple>
+
+    <!-- 批次處理進度 -->
+    <div id="batchBox" class="hidden batch-card">
+      <div class="batch-head">
+        <span class="title">📦 批次處理</span>
+        <span id="batchProgress" style="font-size:12px;color:#64748b;font-variant-numeric:tabular-nums">0 / 0</span>
+        <div class="batch-progressbar"><div id="batchBar" style="width:0%"></div></div>
+        <button class="btn secondary" id="closeBatch" style="padding:5px 12px;font-size:11.5px">關閉</button>
+      </div>
+      <div id="batchTable" class="batch-body"></div>
+    </div>
+
+    <div id="result" class="hidden" style="margin-top:14px">
+      <div class="summary-grid">
+        <div class="summary-block"><div class="label">院區</div><div class="value" id="sumClinic">—</div></div>
+        <div class="summary-block"><div class="label">日期區間</div><div class="value" id="sumRange">—</div></div>
+      </div>
+
+      <div class="stats" style="grid-template-columns:repeat(4, 1fr)">
+        <div class="stat"><div class="num" id="totalRows">0</div><div class="label">原始筆數</div></div>
+        <div class="stat"><div class="num" style="color:#166534" id="keptRows">0</div><div class="label">保留筆數（=週次）</div></div>
+        <div class="stat"><div class="num" style="color:#991b1b" id="removedRows">0</div><div class="label">刪除筆數</div></div>
+        <div class="stat"><div class="num" style="color:#1d4ed8" id="totalPersons">0</div><div class="label">人次（人頭）</div></div>
+      </div>
+
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+        <button class="btn" id="uploadBtn">⬆️ 上傳到 Google Sheet</button>
+        <button class="btn secondary" id="downloadBtn">下載 XLSX</button>
+        <span id="uploadStatus" style="font-size:12.5px;color:#64748b"></span>
+      </div>
+
+      <div id="doctorBox" class="hidden">
+        <div class="section-title">📊 醫師別筆數</div>
+        <table class="dt" id="doctorTable"></table>
+      </div>
+
+      <div id="removedBox" class="hidden">
+        <div class="section-title">🗑 已刪除明細（請檢查是否有錯字漏抓）</div>
+        <table class="dt" id="removedTable"></table>
+      </div>
+    </div>
+    <div id="err" class="err"></div>
+  </div>
+
+  <!-- 已上傳紀錄（從資料庫拉，跨裝置一致）-->
+  <div class="card">
+    <h2>📋 已上傳紀錄（同步自資料庫）
+      <span id="uploadCount" class="badge warn">— / 13</span>
+      <select id="rangeFilter" style="margin-left:8px;padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px"></select>
+      <button class="btn secondary" id="refreshUploaded" style="margin-left:auto">重新整理</button>
+    </h2>
+    <div id="uploadedList" class="uploaded-list">
+      <div style="color:#94a3b8;font-size:12.5px;padding:8px 0">載入中…</div>
+    </div>
+    <div style="font-size:11px;color:#94a3b8;margin-top:4px">
+      🔄 此清單來自 Google Sheet 資料庫，所有裝置看到的內容一致
+    </div>
+  </div>
+
+  <!-- 儀表板 -->
+  <div class="card">
+    <h2>📊 區間儀表板（從 Google Sheet 即時計算）
+      <button class="btn secondary" id="loadDash" style="margin-left:auto">重新載入</button>
+    </h2>
+    <div id="dashCtrl" class="hidden" style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
+      <label style="font-size:13px;color:#475569">選擇區間：</label>
+      <select id="dashRange" style="padding:7px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px"></select>
+      <span id="dashUploaded" class="badge warn"></span>
+      <span id="dashCompare" style="font-size:12px;color:#64748b;margin-left:auto"></span>
+    </div>
+
+    <div id="dashEmpty" style="font-size:13px;color:#94a3b8;padding:8px 0">
+      尚未載入。按右上「重新載入」從 Google Sheet 抓資料。
+    </div>
+
+    <div id="dashContent" class="hidden">
+      <!-- 院區人次 / 週次 -->
+      <div class="section-title">🏥 各院區人次 / 週次（本期 vs 上期）</div>
+      <table class="dt" id="tableClinic"></table>
+      <div style="font-size:11px;color:#94a3b8;margin-top:4px">人次=不重複 kcstmr（同病患算 1 人）；週次=筆數（一筆 labeno 算一週次）</div>
+
+      <!-- 院區 × 醫師 -->
+      <div class="section-title" style="margin-top:16px">👨‍⚕️ 各院區×醫師 明細（本期 vs 上期）</div>
+      <table class="dt" id="tableClinicDoc"></table>
+
+      <!-- 醫師跨院區總計 -->
+      <div class="section-title" style="margin-top:16px">🧑‍🤝‍🧑 醫師跨院區總計（人次為去重後）</div>
+      <table class="dt" id="tableDoc"></table>
+
+      <!-- 院區×醫師×雙週 矩陣表 -->
+      <div class="section-title" style="margin-top:20px">
+        🗓 院區×醫師×雙週 矩陣表
+        <span style="margin-left:10px;font-weight:400;font-size:12px;color:#64748b">
+          顯示：
+          <label style="cursor:pointer"><input type="radio" name="matrixMetric" value="count" checked> 週次（=筆數）</label>
+          <label style="cursor:pointer;margin-left:10px"><input type="radio" name="matrixMetric" value="persons"> 人次（去重）</label>
+        </span>
+        <button class="btn secondary" id="exportMatrixBtn" style="margin-left:14px;padding:6px 14px;font-size:12.5px">📥 匯出週次表（貼進範本）</button>
+      </div>
+      <div style="overflow-x:auto;border:1px solid #e2e8f0;border-radius:8px;max-height:560px">
+        <table class="dt" id="tableMatrix" style="font-size:12.5px"></table>
+      </div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:4px">
+        labeno 含「拿」的歸入每個院區的「減重拿藥」行，其餘掛在實際醫師頭上。匯出的 Excel 只含週次，欄位與你「各醫師含拿藥明細」分頁一致，可直接貼上。
+      </div>
+
+      <div style="font-size:11.5px;color:#94a3b8;margin-top:10px" id="dashFooter"></div>
+    </div>
+  </div>
+
+  <!-- 規則 -->
+  <div class="card">
+    <h2>📌 保留規則（超寬鬆 · 容忍懶散 key-in）</h2>
+    <div class="rules">
+      <b>核心邏輯：</b>只要符合以下條件，全部保留 → 寧可錯抓不漏抓。<br>
+      ① <b>含「減」或「檢」</b>（容錯：簡/鑑）<br>
+      ② <b>結尾不能是</b> <code>T00</code><br>
+      ③ <b>不是純「減免」</b>類型（純減免、減免XX 等無減重特徵者排除）<br><br>
+      <b>因此這些都會保留：</b>
+      <code>減1W</code> <code>減拿2</code> <code>R減*2W</code> <code>C M減1.3</code>
+      <code>S減2*</code> <code>減R2W!</code> <code>R減2周@</code> <code>減c*2w</code>
+      <code>C減初!</code> <code>減C</code> <code>C減</code> <code>減拿</code>
+      （即使沒有 W、用 * 或 ! 代替、大小寫不一、有空格⋯都收）<br><br>
+      <b>這些會排除：</b>
+      <code>減免</code> <code>減免T00</code> <code>減重T00</code> <code>PW*1</code> <code>IM</code> <code>NSUG2*10</code>
+      （結尾 T00、或不含減字者）
+    </div>
+  </div>
+
+  <div class="footer">資料完全在你的瀏覽器內處理；只有上傳時會送到你自己的 Google Sheet</div>
+</div>
+
+<script>
+// ===== 規則（寬鬆版：容忍懶散 key-in）=====
+// 1) 結尾不能是 T00（如 減免T00、減重T00）
+// 2) 必須含「減/檢/簡/鑑」其中之一
+// 3) 不能是純「減免」開頭且沒其他減重特徵（無數字/拿/初/出/W/周）
+const JIAN = '減檢簡鑑';
+const NA   = '拿那哪納拎';
+const CHU  = '初出除楚';
+const reJian = new RegExp('[' + JIAN + ']');
+// 只用來分類「刪除原因」，不用於篩選
+const reCore = new RegExp('[' + JIAN + '][' + NA + CHU + ']?(?:[1-9]|1[0-9]|20)[Ww]');
+
+function matchRule(s) {
+  if (s === undefined || s === null || s === '') return false;
+  s = String(s).trim();
+  if (s.endsWith('T00')) return false;        // 排除 T00 結尾
+  if (!reJian.test(s)) return false;          // 必須含減/檢/簡/鑑
+  // 排除純「減免」（沒有數字、沒有拿/初/出/楚、沒有 W/w/周）
+  if (/^減免/.test(s) && !/[0-9拿那哪納拎初出除楚Ww周]/.test(s)) return false;
+  return true;
+}
+
+// ===== 檔名解析 =====
+// 期望格式：「院區+日期區間.xlsx」例如 三樹0511-0524.xlsx
+function parseFilename(name) {
+  const base = name.replace(/\.(xlsx|xls)$/i, '');
+  // 把第一個出現「3~4 位數字 + - + 3~4 位數字」的當作日期區間
+  const m = base.match(/^(.*?)(\d{3,4}-\d{3,4})/);
+  if (m) {
+    return { clinic: m[1].trim(), dateRange: m[2] };
+  }
+  return { clinic: base, dateRange: '' };
+}
+
+// ===== 組合範例 =====
+(function fillCombos(){
+  const list = document.getElementById('comboList');
+  const pre = ['', '寄', '電', '寄電', 'V', 'O', 'M'];
+  const mid = ['', '拿', '初'];
+  const weeks = [1,2,3,4,5,6,7,8,10,12,16,20];
+  const out = new Set();
+  for (const p of pre) for (const m of mid) {
+    if ((p === 'O' || p === 'M') && m === '初') continue;
+    for (const w of weeks) {
+      const tails = (p === 'O' || p === 'M')
+        ? ['.1','.2','.3','.4','.5','.6','.7','.8']
+        : ['', '轉'];
+      for (const t of tails) out.add(p + '減' + m + w + 'W' + t);
+    }
+  }
+  list.innerHTML = [...out].sort().map(x => '<div>' + x + '</div>').join('');
+})();
+
+// ===== 設定（內建 URL，櫃檯不可動）=====
+// 修改 URL 請在這裡改後重存檔；管理員也可從畫面上的⚙️區覆寫
+const BUILTIN_ENDPOINT = 'https://script.google.com/macros/s/AKfycbyAxuiiL2mJH0EDuRUn6UbIl0LanOH0RkK5DCCwARIVPG3SyGMONsJKq2_HHoIriem2wg/exec';
+
+const LS_ENDPOINT = 'wlf_endpoint';
+const LS_UPLOADED = 'wlf_uploaded_v1';
+const endpointInput = document.getElementById('endpoint');
+const connStatus = document.getElementById('connStatus');
+
+function getEndpoint() {
+  return (localStorage.getItem(LS_ENDPOINT) || '').trim() || BUILTIN_ENDPOINT;
+}
+endpointInput.value = localStorage.getItem(LS_ENDPOINT) || '';
+
+function updateConnStatus(state, msg) {
+  connStatus.className = 'badge ' + (state === 'ok' ? 'ok' : state === 'err' ? 'err' : 'warn');
+  connStatus.textContent = msg || (state === 'ok' ? '已就緒' : '未設定');
+}
+updateConnStatus('ok', '已就緒');
+
+// 管理員開關
+document.getElementById('adminBtn').onclick = () => {
+  document.getElementById('adminPanel').classList.toggle('hidden');
+};
+
+document.getElementById('saveBtn').onclick = () => {
+  const v = endpointInput.value.trim();
+  if (!v) {
+    if (confirm('清空覆寫值並改用內建 URL？')) {
+      localStorage.removeItem(LS_ENDPOINT);
+      updateConnStatus('ok', '已恢復內建');
+    }
+    return;
+  }
+  localStorage.setItem(LS_ENDPOINT, v);
+  updateConnStatus('ok', '已覆寫儲存');
+};
+document.getElementById('testBtn').onclick = async () => {
+  const v = endpointInput.value.trim();
+  if (!v) { alert('請先貼上 URL 再測試'); return; }
+  updateConnStatus('warn', '測試中…');
+  // 先試正常 GET（讀得到回應內容）
+  try {
+    const resp = await fetch(v, { method: 'GET' });
+    const text = await resp.text();
+    if (text.indexOf('alive') >= 0) { updateConnStatus('ok', '連線成功'); return; }
+    if (text.indexOf('aggregated') >= 0 || text.indexOf('status') >= 0) {
+      updateConnStatus('ok', '連線成功（已部署）'); return;
+    }
+    updateConnStatus('warn', '收到回應但格式異常');
+    return;
+  } catch (e1) {
+    // file:// + 部分瀏覽器 CORS 會擋掉「讀回應」，但 POST 上傳仍可
+    // 改用 no-cors 確認 URL 至少能連通
+    try {
+      await fetch(v, { method: 'GET', mode: 'no-cors' });
+      updateConnStatus('warn', 'CORS 受限（POST 上傳仍可用）');
+    } catch (e2) {
+      updateConnStatus('err', '完全連不上');
+    }
+  }
+};
+
+// ===== 上傳紀錄（同步自 Sheet，跨裝置一致）=====
+function renderUploaded() {
+  const wrap = document.getElementById('uploadedList');
+  const cnt  = document.getElementById('uploadCount');
+  const sel  = document.getElementById('rangeFilter');
+
+  if (!dashData || !dashData.uploadList) {
+    wrap.innerHTML = '<div style="color:#94a3b8;font-size:12.5px;padding:8px 0">資料庫載入中…</div>';
+    cnt.textContent = '— / 13';
+    cnt.className = 'badge warn';
+    sel.innerHTML = '';
+    return;
+  }
+
+  const list = dashData.uploadList;
+  // 依區間分組
+  const byRange = {};
+  for (const x of list) (byRange[x.range] = byRange[x.range] || []).push(x);
+  const ranges = Object.keys(byRange).sort();
+
+  // 重建下拉
+  const prev = sel.value;
+  sel.innerHTML = ranges.map(r => {
+    const n = (dashData.uploadedClinics || {})[r] || byRange[r].length;
+    return `<option value="${r}">${r}（${n}/13）</option>`;
+  }).join('');
+  sel.value = (prev && ranges.includes(prev)) ? prev : (ranges[ranges.length - 1] || '');
+
+  const chosen = sel.value;
+  const uploadedN = (dashData.uploadedClinics || {})[chosen] || 0;
+  cnt.textContent = uploadedN + ' / 13（' + (chosen || '無資料') + '）';
+  cnt.className = 'badge ' + (uploadedN >= 13 ? 'ok' : 'warn');
+
+  const items = (byRange[chosen] || []).slice().sort((a, b) => (a.ts < b.ts ? 1 : -1));
+  if (items.length === 0) {
+    wrap.innerHTML = '<div style="color:#94a3b8;font-size:12.5px;padding:8px 0">此區間尚無上傳紀錄</div>';
+    return;
+  }
+  wrap.innerHTML = items.map(x => {
+    const t = x.ts ? new Date(x.ts).toLocaleString('zh-TW', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : '';
+    return `<div class="item">
+       <span>${escapeHtml(x.filename)}</span>
+       <span>${escapeHtml(x.clinic)}</span>
+       <span>${t}</span>
+       <span>保留 ${x.kept} / 刪 ${x.removed}</span>
+     </div>`;
+  }).join('');
+}
+document.getElementById('refreshUploaded').onclick = () => loadDashboard().catch(()=>{});
+document.getElementById('rangeFilter').onchange = renderUploaded;
+
+// 開啟頁面時自動載入儀表板與已上傳紀錄
+setTimeout(() => { loadDashboard().catch(()=>{}); }, 300);
+
+// ===== 主流程 =====
+const dz = document.getElementById('dz');
+const fileInput = document.getElementById('file');
+const resultBox = document.getElementById('result');
+const errBox = document.getElementById('err');
+const uploadBtn = document.getElementById('uploadBtn');
+const downloadBtn = document.getElementById('downloadBtn');
+const uploadStatus = document.getElementById('uploadStatus');
+
+let lastResult = null;  // { clinic, dateRange, filename, total, kept, removed, removedDetail, rows, outputBlob, outputName }
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function findCols(rows) {
+  for (let r = 0; r < Math.min(rows.length, 10); r++) {
+    const row = rows[r] || [];
+    const lower = row.map(v => v === undefined || v === null ? '' : String(v).trim().toLowerCase());
+    const lab = lower.indexOf('labeno');
+    if (lab >= 0) {
+      const docZh = row.findIndex(v => v && String(v).trim() === '醫師');
+      const kc = lower.indexOf('kcstmr');
+      const dt = lower.indexOf('date');
+      const dy = row.findIndex(v => v && String(v).trim() === '診別');
+      return { labeno: lab, doctor: docZh, kcstmr: kc, date: dt, dyangle: dy, headerRow: r };
+    }
+  }
+  return null;
+}
+
+function processWorkbook(wb, originalName) {
+  const sheetName = wb.SheetNames[0];
+  const ws = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: true });
+  const cols = findCols(rows);
+  if (!cols) throw new Error('找不到 labeno 欄位，請確認檔案格式');
+
+  const headerRows = cols.headerRow >= 0 ? rows.slice(0, cols.headerRow + 1) : [];
+  const dataRows   = rows.slice(cols.headerRow >= 0 ? cols.headerRow + 1 : 0);
+
+  const keptData = [];
+  const keptStruct = [];
+  const removedCounter = {};
+  const doctorCounter = {};     // 筆數
+  const doctorWeeks = {};       // 週數
+  const doctorPersons = {};     // 人次（去重 kcstmr 集合）
+  const allPersons = {};        // 整份檔案的不重複病患
+  let total = 0;
+
+  for (const r of dataRows) {
+    const allEmpty = (r || []).every(x => x === '' || x === undefined || x === null);
+    if (allEmpty) continue;
+    total++;
+    const v = r[cols.labeno];
+    if (matchRule(v)) {
+      keptData.push(r);
+      const kcRaw = cols.kcstmr >= 0 ? r[cols.kcstmr] : '';
+      const kc = kcRaw === '' || kcRaw === null || kcRaw === undefined ? '' : String(kcRaw).trim();
+      keptStruct.push({
+        診別:  cols.dyangle >= 0 ? r[cols.dyangle] : '',
+        醫師:  cols.doctor  >= 0 ? r[cols.doctor]  : '',
+        kcstmr: kc,
+        date:  cols.date    >= 0 ? r[cols.date]    : '',
+        labeno: v
+      });
+      if (kc) allPersons[kc] = true;
+      if (cols.doctor >= 0) {
+        const d = r[cols.doctor];
+        if (d) {
+          const key = String(d).trim();
+          doctorCounter[key] = (doctorCounter[key] || 0) + 1;
+          doctorWeeks[key] = (doctorWeeks[key] || 0) + extractWeeks(v);
+          if (!doctorPersons[key]) doctorPersons[key] = {};
+          if (kc) doctorPersons[key][kc] = true;
+        }
+      }
+    } else {
+      const key = (v === '' || v === undefined || v === null) ? '(空白)' : String(v);
+      removedCounter[key] = (removedCounter[key] || 0) + 1;
+    }
+  }
+
+  // 解析檔名
+  const { clinic, dateRange } = parseFilename(originalName);
+
+  // 醫師別（含筆數、週數、人次）
+  const docList = Object.entries(doctorCounter)
+    .map(([d, n]) => ({
+      doctor: d,
+      count: n,
+      weeks: doctorWeeks[d] || 0,
+      persons: Object.keys(doctorPersons[d] || {}).length
+    }))
+    .sort((a, b) => b.persons - a.persons || b.count - a.count);
+  const totalPersons = Object.keys(allPersons).length;
+
+  // 組輸出工作表
+  const outRows = headerRows.slice();
+  outRows.push(...keptData);
+  outRows.push([]);
+  outRows.push(['——— 摘要 ———']);
+  outRows.push(['院區', clinic]);
+  outRows.push(['日期區間', dateRange]);
+  outRows.push(['原始筆數', total]);
+  outRows.push(['保留筆數（週次）', keptData.length]);
+  outRows.push(['刪除筆數', total - keptData.length]);
+  outRows.push(['人次（不重複病患）', totalPersons]);
+  outRows.push([]);
+  outRows.push(['醫師', '週次（=筆數）', '人次']);
+  for (const x of docList) outRows.push([x.doctor, x.count, x.persons]);
+  outRows.push(['總計', keptData.length, totalPersons]);
+
+  const newWs = XLSX.utils.aoa_to_sheet(outRows);
+  if (ws['!cols']) newWs['!cols'] = ws['!cols'];
+  if (ws['!merges']) newWs['!merges'] = (ws['!merges'] || []).filter(m => m.e.r < (headerRows.length || 1));
+  const newWb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(newWb, newWs, sheetName);
+  const out = XLSX.write(newWb, { bookType: 'xlsx', type: 'array' });
+  const outputBlob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const outputName = originalName.replace(/\.(xlsx|xls|XLSX|XLS)$/, '') + '_篩選後.xlsx';
+
+  // 刪除明細摘要字串
+  const rmEntries = Object.entries(removedCounter).sort((a,b) => b[1]-a[1]);
+  const removedDetail = rmEntries.map(([k,n]) => k + '×' + n).join('、');
+
+  lastResult = {
+    clinic, dateRange, filename: originalName,
+    total, kept: keptData.length, removed: total - keptData.length,
+    removedDetail, rows: keptStruct, outputBlob, outputName
+  };
+
+  // UI
+  document.getElementById('sumClinic').textContent = clinic || '（無法解析）';
+  document.getElementById('sumRange').textContent  = dateRange || '（無法解析）';
+  document.getElementById('totalRows').textContent = total;
+  document.getElementById('keptRows').textContent  = keptData.length;
+  document.getElementById('removedRows').textContent = total - keptData.length;
+  document.getElementById('totalPersons').textContent = totalPersons;
+
+  // 醫師表（週次=筆數 / 人次）
+  const docBox = document.getElementById('doctorBox');
+  const dt = document.getElementById('doctorTable');
+  if (docList.length) {
+    let html = '<thead><tr><th>醫師</th><th>週次（=筆數）</th><th>人次<span style="font-weight:400;color:#94a3b8;font-size:11px">（同病患算 1 人）</span></th></tr></thead><tbody>';
+    for (const x of docList) {
+      html += `<tr><td>${escapeHtml(x.doctor)}</td><td>${x.count}</td><td><b>${x.persons}</b></td></tr>`;
+    }
+    html += `<tr style="font-weight:600;background:#f8fafc">
+               <td>總計</td><td>${keptData.length}</td><td><b>${totalPersons}</b></td></tr></tbody>`;
+    dt.innerHTML = html;
+    docBox.classList.remove('hidden');
+  } else {
+    docBox.classList.add('hidden');
+  }
+
+  // 刪除表
+  const rmBox = document.getElementById('removedBox');
+  const rt = document.getElementById('removedTable');
+  if (rmEntries.length) {
+    let html = '<thead><tr><th>labeno</th><th>原因</th><th>刪除筆數</th></tr></thead><tbody>';
+    for (const [k, n] of rmEntries) {
+      let reason;
+      if (k === '(空白)') reason = 'labeno 為空';
+      else if (k.endsWith('T00')) reason = '結尾為 T00';
+      else if (!reJian.test(k)) reason = '不含「減/檢」類字';
+      else if (/^減免/.test(k)) reason = '減免類（非減重）';
+      else reason = '其他';
+      html += `<tr><td style="font-family:ui-monospace,Menlo,monospace">${escapeHtml(k)}</td>
+                  <td style="color:#64748b">${reason}</td><td>${n}</td></tr>`;
+    }
+    html += '</tbody>';
+    rt.innerHTML = html;
+    rmBox.classList.remove('hidden');
+  } else {
+    rmBox.classList.add('hidden');
+  }
+
+  uploadStatus.textContent = '';
+  uploadStatus.className = '';
+  resultBox.classList.remove('hidden');
+  errBox.textContent = '';
+}
+
+function readWorkbook(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        resolve(XLSX.read(data, { type: 'array' }));
+      } catch (err) { reject(err); }
+    };
+    reader.onerror = () => reject(new Error('讀取檔案失敗'));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function handleFile(file) {
+  errBox.textContent = '';
+  resultBox.classList.add('hidden');
+  lastResult = null;
+  if (typeof XLSX === 'undefined') {
+    errBox.innerHTML = '⚠️ XLSX 函式庫尚未載入完成，請等 2 秒再試';
+    return;
+  }
+  readWorkbook(file).then(wb => {
+    try { processWorkbook(wb, file.name); }
+    catch (err) { errBox.textContent = '處理失敗：' + (err && err.message ? err.message : err); }
+  }).catch(err => { errBox.textContent = '讀取檔案失敗：' + err.message; });
+}
+
+// === 批次處理多檔 ===
+async function handleBatch(files) {
+  if (typeof XLSX === 'undefined') {
+    errBox.innerHTML = '⚠️ XLSX 函式庫尚未載入完成，請等 2 秒再試';
+    return;
+  }
+  errBox.textContent = '';
+  resultBox.classList.add('hidden');
+
+  const ep = getEndpoint();
+  const batchBox = document.getElementById('batchBox');
+  const batchTable = document.getElementById('batchTable');
+  const batchProgress = document.getElementById('batchProgress');
+  const batchBar = document.getElementById('batchBar');
+  batchBox.classList.remove('hidden');
+
+  // 初始化表格
+  const items = Array.from(files).map(f => ({
+    name: f.name, file: f, status: '等待中', kept: 0, removed: 0, persons: 0,
+    clinic: '', dateRange: ''
+  }));
+  function render() {
+    let html = '<div class="batch-row head">' +
+               '<div>檔名</div><div>院區</div><div>區間</div>' +
+               '<div class="num">保留</div><div class="num">刪除</div><div class="num">人次</div><div>狀態</div></div>';
+    for (const it of items) {
+      let rowCls = 'pending', statCls = 'pending', statTxt = '等待中';
+      if (it.status === '處理中') { rowCls = 'running'; statCls = 'running'; statTxt = '處理中'; }
+      else if (it.status === '完成') { rowCls = 'ok'; statCls = 'ok'; statTxt = '已上傳'; }
+      else if (it.status === '重複') { rowCls = 'dup'; statCls = 'dup'; statTxt = '已上傳過'; }
+      else if (it.status === '失敗') { rowCls = 'err'; statCls = 'err'; statTxt = it.error || '失敗'; }
+      html += `<div class="batch-row ${rowCls}">
+                <div class="fn" title="${escapeHtml(it.name)}">${escapeHtml(it.name)}</div>
+                <div>${escapeHtml(it.clinic || '—')}</div>
+                <div>${escapeHtml(it.dateRange || '—')}</div>
+                <div class="num">${it.kept || '—'}</div>
+                <div class="num">${it.removed || '—'}</div>
+                <div class="num">${it.persons || '—'}</div>
+                <div><span class="status-dot ${statCls}"><span class="dot"></span>${escapeHtml(statTxt)}</span></div>
+              </div>`;
+    }
+    batchTable.innerHTML = html;
+  }
+  render();
+
+  let done = 0;
+  for (const it of items) {
+    it.status = '處理中';
+    batchProgress.textContent = `${done} / ${items.length}`;
+    batchBar.style.width = (done / items.length * 100) + '%';
+    render();
+    try {
+      const wb = await readWorkbook(it.file);
+      const result = processFileForBatch(wb, it.name);
+      it.clinic = result.clinic;
+      it.dateRange = result.dateRange;
+      it.kept = result.kept;
+      it.removed = result.removed;
+      it.persons = result.persons;
+      if (!result.clinic || !result.dateRange) {
+        it.status = '失敗'; it.error = '檔名無法解析';
+        render(); done++;
+        continue;
+      }
+      // 上傳
+      const resp = await fetch(ep, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          clinic: result.clinic, dateRange: result.dateRange,
+          filename: it.name, total: result.total,
+          kept: result.kept, removed: result.removed,
+          removedDetail: result.removedDetail, rows: result.rows
+        })
+      });
+      const text = await resp.text();
+      let res; try { res = JSON.parse(text); } catch (e) { res = { status: 'error', message: text }; }
+      if (res.status === 'ok') it.status = '完成';
+      else if (res.status === 'duplicate') it.status = '重複';
+      else { it.status = '失敗'; it.error = res.message || '未知錯誤'; }
+    } catch (err) {
+      it.status = '失敗';
+      it.error = err && err.message ? err.message : String(err);
+    }
+    done++;
+    batchProgress.textContent = `${done} / ${items.length}`;
+    batchBar.style.width = (done / items.length * 100) + '%';
+    render();
+  }
+
+  // 全部完成後重新拉儀表板
+  await loadDashboard().catch(()=>{});
+}
+
+document.getElementById('closeBatch').addEventListener('click', () => {
+  document.getElementById('batchBox').classList.add('hidden');
+});
+
+function processFileForBatch(wb, originalName) {
+  const sheetName = wb.SheetNames[0];
+  const ws = wb.Sheets[sheetName];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: true });
+  const cols = findCols(rows);
+  if (!cols) throw new Error('找不到 labeno 欄位');
+  const dataStart = cols.headerRow >= 0 ? cols.headerRow + 1 : 0;
+  const allPersons = {};
+  const keptStruct = [];
+  const removedCounter = {};
+  let total = 0, keptN = 0, removedN = 0;
+  for (const r of rows.slice(dataStart)) {
+    const allEmpty = (r || []).every(x => x === '' || x === undefined || x === null);
+    if (allEmpty) continue;
+    total++;
+    const v = r[cols.labeno];
+    if (matchRule(v)) {
+      keptN++;
+      const kc = cols.kcstmr >= 0 && r[cols.kcstmr] != null ? String(r[cols.kcstmr]).trim() : '';
+      if (kc) allPersons[kc] = true;
+      keptStruct.push({
+        診別: cols.dyangle >= 0 ? r[cols.dyangle] : '',
+        醫師: cols.doctor  >= 0 ? r[cols.doctor]  : '',
+        kcstmr: kc,
+        date: cols.date >= 0 ? r[cols.date] : '',
+        labeno: v
+      });
+    } else {
+      removedN++;
+      const key = (v === '' || v == null) ? '(空白)' : String(v);
+      removedCounter[key] = (removedCounter[key] || 0) + 1;
+    }
+  }
+  const { clinic, dateRange } = parseFilename(originalName);
+  const removedDetail = Object.entries(removedCounter).sort((a,b)=>b[1]-a[1])
+                          .map(([k,n])=>k+'×'+n).join('、');
+  return {
+    clinic, dateRange, total, kept: keptN, removed: removedN,
+    persons: Object.keys(allPersons).length,
+    removedDetail, rows: keptStruct
+  };
+}
+
+dz.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => {
+  if (!e.target.files || e.target.files.length === 0) return;
+  if (e.target.files.length === 1) handleFile(e.target.files[0]);
+  else handleBatch(e.target.files);
+  e.target.value = '';  // 清掉，方便連選同檔
+});
+['dragenter','dragover'].forEach(ev => dz.addEventListener(ev, e => {
+  e.preventDefault(); e.stopPropagation(); dz.classList.add('drag');
+}));
+['dragleave','drop'].forEach(ev => dz.addEventListener(ev, e => {
+  e.preventDefault(); e.stopPropagation(); dz.classList.remove('drag');
+}));
+dz.addEventListener('drop', e => {
+  const files = e.dataTransfer.files;
+  if (!files || files.length === 0) return;
+  if (files.length === 1) handleFile(files[0]);
+  else handleBatch(files);
+});
+
+// 下載
+downloadBtn.addEventListener('click', () => {
+  if (!lastResult || !lastResult.outputBlob) return;
+  const url = URL.createObjectURL(lastResult.outputBlob);
+  const a = document.createElement('a');
+  a.href = url; a.download = lastResult.outputName;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+});
+
+// === 儀表板 ===
+let dashData = null;
+const loadDashBtn = document.getElementById('loadDash');
+const dashCtrl = document.getElementById('dashCtrl');
+const dashEmpty = document.getElementById('dashEmpty');
+const dashContent = document.getElementById('dashContent');
+const dashRangeSel = document.getElementById('dashRange');
+const dashUploaded = document.getElementById('dashUploaded');
+const dashCompare = document.getElementById('dashCompare');
+const dashFooter = document.getElementById('dashFooter');
+
+function extractWeeks(s) {
+  if (!s) return 0;
+  const m = String(s).match(/(\d{1,2})[Ww]/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+function fmtDelta(cur, prev) {
+  if (prev === 0 || prev === undefined || prev === null) {
+    if (cur === 0) return '<span style="color:#94a3b8">—</span>';
+    return `<span style="color:#16a34a;font-weight:600">+${cur}（新）</span>`;
+  }
+  const diff = cur - prev;
+  if (diff === 0) return `<span style="color:#94a3b8">±0</span>`;
+  const pct = ((diff / prev) * 100).toFixed(1);
+  if (diff > 0) return `<span style="color:#16a34a;font-weight:600">+${diff} (${pct}%) ▲</span>`;
+  return `<span style="color:#dc2626;font-weight:600">${diff} (${pct}%) ▼</span>`;
+}
+
+loadDashBtn.addEventListener('click', loadDashboard);
+
+async function loadDashboard() {
+  const ep = getEndpoint();
+  loadDashBtn.disabled = true;
+  loadDashBtn.textContent = '載入中…';
+  try {
+    const resp = await fetch(ep + (ep.includes('?') ? '&' : '?') + 'action=aggregated');
+    const text = await resp.text();
+    const obj = JSON.parse(text);
+    if (obj.status !== 'ok') throw new Error(obj.message || '資料載入失敗');
+    dashData = obj;
+    renderDashboard();
+  } catch (e) {
+    alert('載入失敗：' + (e && e.message ? e.message : e));
+  } finally {
+    loadDashBtn.disabled = false;
+    loadDashBtn.textContent = '重新載入';
+  }
+}
+
+function renderDashboard() {
+  // 同步刷新已上傳紀錄清單（不論有沒有 dashboard 資料都要）
+  renderUploaded();
+  if (!dashData || !dashData.ranges || dashData.ranges.length === 0) {
+    dashEmpty.textContent = 'Google Sheet 內目前沒有資料';
+    dashEmpty.classList.remove('hidden');
+    dashCtrl.classList.add('hidden');
+    dashContent.classList.add('hidden');
+    return;
+  }
+  dashEmpty.classList.add('hidden');
+  dashCtrl.classList.remove('hidden');
+  dashContent.classList.remove('hidden');
+
+  // 區間下拉
+  const ranges = dashData.ranges.slice().sort();
+  const latest = ranges[ranges.length - 1];
+  const prev = dashRangeSel.value;
+  dashRangeSel.innerHTML = ranges.map(r => `<option value="${r}">${r}</option>`).join('');
+  dashRangeSel.value = (prev && ranges.includes(prev)) ? prev : latest;
+  dashRangeSel.onchange = renderTables;
+  renderTables();
+  dashFooter.textContent = '資料載入時間：' + (dashData.generatedAt || '');
+}
+
+function renderTables() {
+  const range = dashRangeSel.value;
+  if (!range) return;
+  const ranges = dashData.ranges.slice().sort();
+  const idx = ranges.indexOf(range);
+  const prevRange = idx > 0 ? ranges[idx - 1] : null;
+
+  // 上傳進度
+  const uploadedN = (dashData.uploadedClinics || {})[range] || 0;
+  dashUploaded.textContent = `已上傳 ${uploadedN} / 13 院區`;
+  dashUploaded.className = 'badge ' + (uploadedN >= 13 ? 'ok' : 'warn');
+  dashCompare.textContent = prevRange ? `對照上期：${prevRange}` : '無上期可對照';
+
+  const byRC  = dashData.byRangeClinic    || {};
+  const byRCD = dashData.byRangeClinicDoc || {};
+  const byRD  = dashData.byRangeDoctor    || {};
+  const curRC  = byRC[range]  || {}; const prvRC  = (prevRange && byRC[prevRange])  || {};
+  const curRCD = byRCD[range] || {}; const prvRCD = (prevRange && byRCD[prevRange]) || {};
+  const curRD  = byRD[range]  || {}; const prvRD  = (prevRange && byRD[prevRange])  || {};
+
+  // === Table 1: 院區人次 / 週次 ===
+  const clinicSet = new Set([...Object.keys(curRC), ...Object.keys(prvRC)]);
+  const clinicRows = [];
+  let totP=0, totC=0, totPp=0, totCp=0;
+  for (const cli of clinicSet) {
+    const c = curRC[cli] || { persons:0, count:0 };
+    const p = prvRC[cli] || { persons:0, count:0 };
+    clinicRows.push({ clinic: cli, persons:c.persons, count:c.count,
+                      pPersons:p.persons, pCount:p.count });
+    totP += c.persons; totC += c.count; totPp += p.persons; totCp += p.count;
+  }
+  clinicRows.sort((a, b) => b.persons - a.persons);
+  let h1 = `<thead><tr><th>院區</th><th>人次（人頭）</th><th>週次（=筆數）</th>
+              <th>上期人次</th><th>人次變化</th><th>上期週次</th><th>週次變化</th></tr></thead><tbody>`;
+  for (const r of clinicRows) {
+    h1 += `<tr><td>${escapeHtml(r.clinic)}</td>
+              <td><b>${r.persons}</b></td><td>${r.count}</td>
+              <td>${r.pPersons}</td><td>${fmtDelta(r.persons, r.pPersons)}</td>
+              <td>${r.pCount}</td><td>${fmtDelta(r.count, r.pCount)}</td></tr>`;
+  }
+  h1 += `<tr style="font-weight:700;background:#f1f5f9">
+           <td>區間合計</td><td><b>${totP}</b></td><td>${totC}</td>
+           <td>${totPp}</td><td>${fmtDelta(totP, totPp)}</td>
+           <td>${totCp}</td><td>${fmtDelta(totC, totCp)}</td></tr></tbody>`;
+  document.getElementById('tableClinic').innerHTML = h1;
+
+  // === Table 2: 院區 × 醫師 ===
+  const rowsCD = [];
+  for (const cli of Object.keys(curRCD))
+    for (const doc of Object.keys(curRCD[cli])) {
+      const c = curRCD[cli][doc];
+      const p = (prvRCD[cli] && prvRCD[cli][doc]) || { persons:0, count:0 };
+      rowsCD.push({ clinic:cli, doctor:doc, persons:c.persons, count:c.count,
+                    pPersons:p.persons, pCount:p.count });
+    }
+  for (const cli of Object.keys(prvRCD))
+    for (const doc of Object.keys(prvRCD[cli])) {
+      if (curRCD[cli] && curRCD[cli][doc]) continue;
+      const p = prvRCD[cli][doc];
+      rowsCD.push({ clinic:cli, doctor:doc, persons:0, count:0,
+                    pPersons:p.persons, pCount:p.count });
+    }
+  rowsCD.sort((a, b) => a.clinic !== b.clinic ? (a.clinic < b.clinic ? -1 : 1) : (b.persons - a.persons));
+  let h2 = `<thead><tr><th>院區</th><th>醫師</th><th>人次</th><th>週次</th>
+              <th>上期人次</th><th>人次變化</th><th>上期週次</th><th>週次變化</th></tr></thead><tbody>`;
+  let lastClinic = '';
+  for (const r of rowsCD) {
+    const bg = r.clinic !== lastClinic ? ' style="border-top:2px solid #cbd5e1"' : '';
+    h2 += `<tr${bg}><td>${escapeHtml(r.clinic)}</td>
+              <td>${escapeHtml(r.doctor)}</td>
+              <td><b>${r.persons}</b></td><td>${r.count}</td>
+              <td>${r.pPersons}</td><td>${fmtDelta(r.persons, r.pPersons)}</td>
+              <td>${r.pCount}</td><td>${fmtDelta(r.count, r.pCount)}</td></tr>`;
+    lastClinic = r.clinic;
+  }
+  h2 += '</tbody>';
+  document.getElementById('tableClinicDoc').innerHTML = h2;
+
+  // === Table 3: 醫師跨院區總計（人次為去重後）===
+  const docSet = new Set([...Object.keys(curRD), ...Object.keys(prvRD)]);
+  const docRows = [];
+  let tc=0, tp=0, tpp=0, tcp=0;
+  for (const doc of docSet) {
+    const c = curRD[doc] || { persons:0, count:0 };
+    const p = prvRD[doc] || { persons:0, count:0 };
+    docRows.push({ doctor:doc, persons:c.persons, count:c.count,
+                   pPersons:p.persons, pCount:p.count });
+    tc += c.count; tp += c.persons; tcp += p.count; tpp += p.persons;
+  }
+  docRows.sort((a, b) => b.persons - a.persons);
+  let h3 = `<thead><tr><th>醫師</th><th>人次</th><th>週次</th>
+              <th>上期人次</th><th>人次變化</th><th>上期週次</th><th>週次變化</th></tr></thead><tbody>`;
+  for (const r of docRows) {
+    h3 += `<tr><td>${escapeHtml(r.doctor)}</td>
+              <td><b>${r.persons}</b></td><td>${r.count}</td>
+              <td>${r.pPersons}</td><td>${fmtDelta(r.persons, r.pPersons)}</td>
+              <td>${r.pCount}</td><td>${fmtDelta(r.count, r.pCount)}</td></tr>`;
+  }
+  h3 += `<tr style="font-weight:700;background:#f1f5f9">
+           <td>總計</td><td><b>${tp}</b></td><td>${tc}</td>
+           <td>${tpp}</td><td>${fmtDelta(tp, tpp)}</td>
+           <td>${tcp}</td><td>${fmtDelta(tc, tcp)}</td></tr></tbody>`;
+  document.getElementById('tableDoc').innerHTML = h3;
+
+  renderMatrix();
+}
+
+// === 院區×醫師×雙週 矩陣表 ===
+function getMatrixMetric() {
+  const r = document.querySelector('input[name="matrixMetric"]:checked');
+  return r ? r.value : 'count';
+}
+document.addEventListener('change', e => {
+  if (e.target && e.target.name === 'matrixMetric') renderMatrix();
+});
+
+function buildMatrix() {
+  // 回傳 { ranges, clinics, doctorsByClinic, data[clinic][doctor][range] = {count, persons} }
+  const byRCD = (dashData && dashData.byRangeClinicDoc) || {};
+  const ranges = Object.keys(byRCD).sort();
+  const clinicSet = new Set();
+  const docByClinic = {};
+  const data = {};
+  for (const rng of ranges) {
+    for (const cli of Object.keys(byRCD[rng])) {
+      clinicSet.add(cli);
+      if (!docByClinic[cli]) docByClinic[cli] = new Set();
+      if (!data[cli]) data[cli] = {};
+      for (const doc of Object.keys(byRCD[rng][cli])) {
+        docByClinic[cli].add(doc);
+        if (!data[cli][doc]) data[cli][doc] = {};
+        data[cli][doc][rng] = byRCD[rng][cli][doc];
+      }
+    }
+  }
+  const clinics = [...clinicSet].sort();
+  const doctorsByClinic = {};
+  for (const c of clinics) {
+    const arr = [...docByClinic[c]];
+    // 「減重拿藥」永遠放最後
+    arr.sort((a, b) => {
+      if (a === '減重拿藥') return 1;
+      if (b === '減重拿藥') return -1;
+      return a.localeCompare(b, 'zh');
+    });
+    doctorsByClinic[c] = arr;
+  }
+  return { ranges, clinics, doctorsByClinic, data };
+}
+
+function renderMatrix() {
+  const wrap = document.getElementById('tableMatrix');
+  if (!wrap) return;
+  if (!dashData || !dashData.ranges || dashData.ranges.length === 0) {
+    wrap.innerHTML = '';
+    return;
+  }
+  const metric = getMatrixMetric();
+  const { ranges, clinics, doctorsByClinic, data } = buildMatrix();
+
+  function val(cli, doc, rng) {
+    const x = data[cli] && data[cli][doc] && data[cli][doc][rng];
+    if (!x) return 0;
+    return metric === 'persons' ? x.persons : x.count;
+  }
+
+  let html = '<thead><tr><th style="position:sticky;top:0;background:#f1f5f9;z-index:2">院區</th>';
+  html += '<th style="position:sticky;top:0;background:#f1f5f9;z-index:2">醫師</th>';
+  for (const r of ranges) html += `<th style="position:sticky;top:0;background:#f1f5f9;z-index:2;text-align:right">${escapeHtml(r)}</th>`;
+  html += '<th style="position:sticky;top:0;background:#eff6ff;z-index:2;text-align:right">合計</th></tr></thead><tbody>';
+
+  let grand = ranges.map(() => 0);
+  let grandSum = 0;
+
+  for (const cli of clinics) {
+    let clinicTotals = ranges.map(() => 0);
+    let firstRow = true;
+    const docs = doctorsByClinic[cli];
+    for (const doc of docs) {
+      const cells = ranges.map(r => val(cli, doc, r));
+      const rowSum = cells.reduce((a, b) => a + b, 0);
+      const bg = firstRow ? ' style="border-top:2px solid #cbd5e1"' : '';
+      firstRow = false;
+      const docStyle = doc === '減重拿藥' ? ' style="color:#92400e;font-weight:600"' : '';
+      html += `<tr${bg}><td>${escapeHtml(cli)}</td><td${docStyle}>${escapeHtml(doc)}</td>`;
+      for (const v of cells) html += `<td style="text-align:right">${v || '<span style=\"color:#cbd5e1\">·</span>'}</td>`;
+      html += `<td style="text-align:right;background:#f8fafc;font-weight:600">${rowSum}</td></tr>`;
+      cells.forEach((v, i) => { clinicTotals[i] += v; });
+    }
+    // 院區小計
+    html += `<tr style="background:#f1f5f9;font-weight:700">
+              <td colspan="2">${escapeHtml(cli)} 小計</td>`;
+    for (const v of clinicTotals) html += `<td style="text-align:right">${v}</td>`;
+    const cSum = clinicTotals.reduce((a, b) => a + b, 0);
+    html += `<td style="text-align:right;background:#dbeafe">${cSum}</td></tr>`;
+    clinicTotals.forEach((v, i) => { grand[i] += v; });
+    grandSum += cSum;
+  }
+
+  // 總計列
+  html += `<tr style="background:#1e293b;color:#fff;font-weight:700">
+            <td colspan="2">全院區合計</td>`;
+  for (const v of grand) html += `<td style="text-align:right">${v}</td>`;
+  html += `<td style="text-align:right;background:#0f172a">${grandSum}</td></tr>`;
+  html += '</tbody>';
+  wrap.innerHTML = html;
+}
+
+// === 匯出院區×醫師×雙週 (週次) Excel ===
+document.addEventListener('click', e => {
+  if (e.target && e.target.id === 'exportMatrixBtn') exportMatrix();
+});
+function exportMatrix() {
+  if (typeof XLSX === 'undefined') { alert('XLSX 函式庫未載入，請等幾秒再試'); return; }
+  if (!dashData || !dashData.ranges || dashData.ranges.length === 0) {
+    alert('儀表板尚無資料');
+    return;
+  }
+  const { ranges, clinics, doctorsByClinic, data } = buildMatrix();
+
+  // aoa：標題列 + 資料列
+  const rows = [];
+  rows.push(['金鶯診所　減重門診　各醫師含拿藥明細（' + ranges.length + ' 個雙週）']);
+  rows.push([]);
+  const periodLabels = ranges.map((r, i) => `P${i+1}\n${r}`);
+  rows.push(['院區', '醫師', ...periodLabels, '合計']);
+
+  for (const cli of clinics) {
+    const docs = doctorsByClinic[cli];
+    let clinicTotals = ranges.map(() => 0);
+    let isFirstDocInClinic = true;
+    for (const doc of docs) {
+      const cells = ranges.map(r => {
+        const x = data[cli] && data[cli][doc] && data[cli][doc][r];
+        return x ? x.count : 0;
+      });
+      cells.forEach((v, i) => { clinicTotals[i] += v; });
+      const rowSum = cells.reduce((a, b) => a + b, 0);
+      const row = [isFirstDocInClinic ? cli : '', doc, ...cells, rowSum];
+      rows.push(row);
+      isFirstDocInClinic = false;
+    }
+    // 院區含拿藥總計
+    const cSum = clinicTotals.reduce((a, b) => a + b, 0);
+    rows.push(['', '院區含拿藥總計', ...clinicTotals, cSum]);
+  }
+
+  // 全院區合計
+  const grandRow = ['全院區', '所有醫師合計'];
+  let grandSum = 0;
+  for (let i = 0; i < ranges.length; i++) {
+    let s = 0;
+    for (const cli of clinics) {
+      for (const doc of doctorsByClinic[cli]) {
+        const x = data[cli] && data[cli][doc] && data[cli][doc][ranges[i]];
+        if (x) s += x.count;
+      }
+    }
+    grandRow.push(s);
+    grandSum += s;
+  }
+  grandRow.push(grandSum);
+  rows.push(grandRow);
+
+  // 建立 sheet
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  // 欄寬
+  ws['!cols'] = [{wch:12}, {wch:18}, ...ranges.map(()=>({wch:14})), {wch:12}];
+  // 標題列合併
+  ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: ranges.length + 2 } }];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '各醫師含拿藥明細');
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+
+  const today = new Date();
+  const yyyymmdd = today.toISOString().slice(0,10).replace(/-/g,'');
+  const filename = `各醫師含拿藥明細_${yyyymmdd}.xlsx`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+}
+
+// 上傳到 Sheet
+uploadBtn.addEventListener('click', async () => {
+  if (!lastResult) return;
+  const ep = getEndpoint();
+  if (!lastResult.clinic || !lastResult.dateRange) {
+    if (!confirm('檔名無法完整解析院區或日期區間，仍要上傳嗎？')) return;
+  }
+  uploadBtn.disabled = true;
+  uploadStatus.textContent = '上傳中…';
+  uploadStatus.style.color = '#64748b';
+
+  const payload = {
+    clinic: lastResult.clinic,
+    dateRange: lastResult.dateRange,
+    filename: lastResult.filename,
+    total: lastResult.total,
+    kept: lastResult.kept,
+    removed: lastResult.removed,
+    removedDetail: lastResult.removedDetail,
+    rows: lastResult.rows
+  };
+
+  try {
+    // 用 text/plain 避免 CORS preflight
+    const resp = await fetch(ep, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    const text = await resp.text();
+    let res;
+    try { res = JSON.parse(text); } catch (e) { res = { status: 'error', message: text }; }
+    if (res.status === 'ok') {
+      uploadStatus.textContent = '✅ 上傳成功（' + res.kept + ' 筆保留 / ' + res.removed + ' 筆刪除）';
+      uploadStatus.style.color = '#166534';
+      // 重新拉資料庫，所有裝置都會看到新紀錄
+      loadDashboard().catch(()=>{});
+    } else if (res.status === 'duplicate') {
+      uploadStatus.textContent = '⚠️ ' + res.message;
+      uploadStatus.style.color = '#92400e';
+    } else {
+      uploadStatus.textContent = '❌ ' + (res.message || '上傳失敗');
+      uploadStatus.style.color = '#991b1b';
+    }
+  } catch (e) {
+    uploadStatus.textContent = '❌ 連線失敗：' + (e && e.message ? e.message : e);
+    uploadStatus.style.color = '#991b1b';
+  } finally {
+    uploadBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

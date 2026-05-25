@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>減重資料篩選器 - 設定教學</title>
+<style>
+  body {
+    font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", sans-serif;
+    background: #f6f9fc;
+    color: #1f2937;
+    margin: 0;
+    padding: 28px 20px 60px;
+    line-height: 1.7;
+  }
+  .container { max-width: 760px; margin: 0 auto; }
+  h1 { color: #0f172a; margin: 0 0 6px; font-size: 26px; }
+  .subtitle { color: #64748b; margin-bottom: 22px; }
+  .card {
+    background: #fff;
+    border-radius: 14px;
+    padding: 22px 26px;
+    box-shadow: 0 4px 18px rgba(15,23,42,.06);
+    margin-bottom: 16px;
+  }
+  h2 {
+    color: #0f172a; font-size: 18px;
+    border-bottom: 2px solid #2563eb;
+    padding-bottom: 6px; margin: 0 0 12px;
+  }
+  h3 { color: #1e293b; font-size: 15px; margin-top: 18px; margin-bottom: 6px; }
+  ol li, ul li { margin: 6px 0; }
+  code, kbd {
+    background: #e2e8f0; padding: 2px 7px; border-radius: 5px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 13px;
+  }
+  .tip {
+    background: #fef3c7;
+    border-left: 4px solid #f59e0b;
+    padding: 10px 14px;
+    border-radius: 6px;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  .ok-box {
+    background: #dcfce7;
+    border-left: 4px solid #16a34a;
+    padding: 10px 14px;
+    border-radius: 6px;
+    margin: 12px 0;
+    font-size: 14px;
+  }
+  .step {
+    background: #f1f5f9;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin: 10px 0;
+  }
+  .step-num {
+    display: inline-block;
+    width: 26px; height: 26px;
+    background: #2563eb; color: #fff;
+    border-radius: 50%;
+    text-align: center; line-height: 26px;
+    font-weight: 600; margin-right: 8px;
+    font-size: 13px;
+  }
+  .flow {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin: 14px 0;
+    font-size: 13px;
+  }
+  .flow-step {
+    background: #eff6ff;
+    border-radius: 8px;
+    padding: 10px;
+    text-align: center;
+    color: #1e40af;
+  }
+  .flow-step .icon { font-size: 20px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 8px 0; }
+  th, td { border: 1px solid #e2e8f0; padding: 7px 10px; text-align: left; }
+  th { background: #f8fafc; }
+  .toc {
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 12px 18px;
+    font-size: 14px;
+    margin-bottom: 18px;
+  }
+  .toc a { color: #2563eb; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>減重資料篩選器 - 設定教學</h1>
+  <p class="subtitle">給櫃檯一次性設定，之後每次只需要拖檔即可</p>
+
+  <div class="toc">
+    <b>本教學分四段：</b><br>
+    1. <a href="#sec1">整體流程</a>　2. <a href="#sec2">建立 Google Sheet 資料庫</a>
+    3. <a href="#sec3">部署 Apps Script 後端</a>　4. <a href="#sec4">日常使用方式</a>
+  </div>
+
+  <div class="card" id="sec1">
+    <h2>① 整體流程</h2>
+    <div class="flow">
+      <div class="flow-step"><div class="icon">🖥️</div>展望系統<br>匯出 EXCEL</div>
+      <div class="flow-step"><div class="icon">📂</div>拖入<br>篩選器</div>
+      <div class="flow-step"><div class="icon">🧹</div>自動清理<br>+ 統計</div>
+      <div class="flow-step"><div class="icon">☁️</div>自動寫入<br>Google Sheet</div>
+    </div>
+    <p>
+      你的工作流原本是：AnyDesk 連展望系統 → 常用報表管理 → 特定申報資料列印 (R1110) →
+      指定日期區間 → 點 <b>EXCEL 檔</b> 匯出。匯出後本來要手動刪欄、刪列、整理。
+    </p>
+    <p>現在改成：把匯出的 XLSX 命名為 <code>院區+日期區間.xlsx</code>（例如 <code>三樹0511-0524.xlsx</code>），
+      拖進「減重資料篩選器」就好。它會自動：</p>
+    <ul>
+      <li>用容錯規則篩出減重相關資料（含錯字、不分大小寫）</li>
+      <li>顯示原始/保留/刪除筆數與刪除原因</li>
+      <li>顯示每位醫師的筆數</li>
+      <li>把資料自動寫入 Google Sheet 資料庫，按院區、日期區間分類</li>
+    </ul>
+  </div>
+
+  <div class="card" id="sec2">
+    <h2>② 建立 Google Sheet 資料庫</h2>
+
+    <div class="step">
+      <span class="step-num">1</span><b>新建一份空白 Google Sheet</b><br>
+      去 <a href="https://sheets.new" target="_blank">sheets.new</a> 建立新試算表，命名為例如「減重申報資料庫」。
+    </div>
+
+    <div class="step">
+      <span class="step-num">2</span><b>打開 Apps Script 編輯器</b><br>
+      在試算表上方點 <code>擴充功能</code> → <code>Apps Script</code>。會打開一個新分頁。
+    </div>
+
+    <div class="step">
+      <span class="step-num">3</span><b>貼上後端程式碼</b><br>
+      把編輯器裡原本的 <code>function myFunction() { ... }</code> 整段刪掉，
+      改貼「<b>Apps_Script_後端程式碼.gs</b>」整份內容。<br>
+      按 <kbd>Ctrl+S</kbd>（Mac 是 <kbd>⌘+S</kbd>）儲存，專案名稱可以叫「減重資料庫後端」。
+    </div>
+
+    <div class="step">
+      <span class="step-num">4</span><b>執行一次 setupSheets 建立工作表</b><br>
+      編輯器頂部選擇函式 <code>setupSheets</code>，按「執行」。<br>
+      第一次會跳出授權視窗，點「審核權限」→ 選擇你的 Google 帳號 →
+      可能看到「Google 尚未驗證這個應用程式」，這正常，點<b>進階</b> →
+      <b>前往「減重資料庫後端」(不安全)</b> → 允許。<br>
+      執行成功後，回到試算表會自動建立三個分頁：<code>明細</code>、<code>上傳紀錄</code>、<code>區間摘要</code>。
+    </div>
+
+    <div class="ok-box">
+      ✅ 此時試算表已準備好。接下來部署 Web App 端點，讓篩選器可以寫入資料。
+    </div>
+  </div>
+
+  <div class="card" id="sec3">
+    <h2>③ 部署 Apps Script 為 Web App</h2>
+
+    <div class="step">
+      <span class="step-num">1</span><b>點右上角「部署」→「新增部署作業」</b>
+    </div>
+    <div class="step">
+      <span class="step-num">2</span><b>選擇類型</b><br>
+      點齒輪圖示 → 選 <code>網頁應用程式</code>。
+    </div>
+    <div class="step">
+      <span class="step-num">3</span><b>設定執行權限</b>
+      <table>
+        <tr><th>欄位</th><th>設定</th></tr>
+        <tr><td>說明（描述）</td><td>減重資料庫 v1</td></tr>
+        <tr><td>執行身分</td><td><b>我</b>（你的帳號）</td></tr>
+        <tr><td>誰可以存取</td><td><b>任何人</b>（這樣篩選器才能匿名 POST）</td></tr>
+      </table>
+    </div>
+    <div class="step">
+      <span class="step-num">4</span><b>按「部署」並複製 Web App URL</b><br>
+      部署成功後會給一段網址，類似：<br>
+      <code style="font-size:11.5px">https://script.google.com/macros/s/AKfycb.../exec</code><br>
+      把這段網址複製起來。
+    </div>
+    <div class="step">
+      <span class="step-num">5</span><b>把 URL 貼進篩選器</b><br>
+      打開「減重資料篩選器.html」（用瀏覽器開），最上方「Google Sheet 連線設定」欄位貼上 URL，
+      按「儲存」。可以按「測試連線」確認綠燈亮起。
+    </div>
+
+    <div class="tip">
+      ⚠️ <b>修改程式碼後</b>：若以後改了 Apps Script 程式碼，要選擇
+      <b>部署 → 管理部署作業 → 編輯 ✏️ → 版本：新增版本 → 部署</b>，
+      URL 不會變。<br>
+      若選「新增部署作業」會產生新 URL，那個版本才會看到改動。
+    </div>
+
+    <div class="tip">
+      💡 <b>如果你已經部署過舊版本</b>：請務必用上面方式「新增版本」重新部署，
+      新版才會有「儀表板資料端點」（<code>?action=aggregated</code>）。
+    </div>
+  </div>
+
+  <div class="card" id="sec4">
+    <h2>④ 日常使用方式</h2>
+
+    <h3>每個區間 13 個院區的 SOP</h3>
+    <ol>
+      <li>用 AnyDesk 連到展望系統，跑 R1110 匯出 EXCEL</li>
+      <li>把檔案另存為 <code>院區+日期區間.xlsx</code>，例如：
+        <ul>
+          <li><code>三樹0511-0524.xlsx</code></li>
+          <li><code>敦化0511-0524.xlsx</code></li>
+          <li><code>松山0511-0524.xlsx</code>（依此類推 13 個院區）</li>
+        </ul>
+      </li>
+      <li>打開「減重資料篩選器.html」</li>
+      <li>把第 1 個院區的 XLSX 拖進工具，會顯示：
+        <ul>
+          <li>院區 / 日期區間（從檔名自動抓）</li>
+          <li>原始筆數 / 保留筆數 / 刪除筆數</li>
+          <li>每位醫師的筆數</li>
+          <li>已刪除的明細（含刪除原因）</li>
+        </ul>
+      </li>
+      <li>檢查無誤後，按「⬆️ 上傳到 Google Sheet」</li>
+      <li>右上角會顯示「○ / 13（區間 XXXX-XXXX）」的進度</li>
+      <li>重複 1-6 共 13 次，完成一個區間</li>
+    </ol>
+
+    <h3>到 HTML 看儀表板</h3>
+    <p>
+      13 個院區傳完後，篩選器頁面下方「📊 區間儀表板」會自動顯示：
+    </p>
+    <ul>
+      <li><b>各院區總週數</b>：本期 vs 上期，含變化量與百分比</li>
+      <li><b>各院區×醫師週數明細</b>：每位醫師在每個院區的週數，含上期比較</li>
+      <li><b>醫師跨院區總計</b>：每位醫師在所有院區的週數總和</li>
+    </ul>
+    <p>
+      上期 = 在資料庫裡比本期早的最近一個區間（依字母順序）。可以從下拉選單切換不同區間。
+    </p>
+    <div class="tip">
+      <b>「週數」怎麼算？</b>從 labeno 抽出數字+W 的部分，例如：
+      <code>減1W</code> = 1 週、<code>減拿4W</code> = 4 週、<code>M減5W.8</code> = 5 週。
+      多筆同病患算多筆，因為一筆代表一次取藥。
+    </div>
+
+    <h3>到 Google Sheet 看結果</h3>
+    <table>
+      <tr><th>分頁</th><th>內容</th></tr>
+      <tr><td><b>明細</b></td><td>所有保留資料逐筆，加上院區、日期區間欄</td></tr>
+      <tr><td><b>上傳紀錄</b></td><td>每次上傳的檔名、原始/保留/刪除筆數、刪除明細</td></tr>
+      <tr><td><b>區間摘要</b></td><td>每個區間×院區的檔案數、保留數、刪除數總計</td></tr>
+    </table>
+
+    <div class="tip">
+      <b>同檔名會擋下</b>：如果同一個 <code>院區+日期區間+檔名</code> 重複上傳，
+      系統會回「此檔案已上傳過」並拒絕。要重新上傳請先到 Sheet 手動刪除舊資料。
+    </div>
+
+    <h3>常見錯誤訊息</h3>
+    <table>
+      <tr><th>訊息</th><th>原因 / 處理</th></tr>
+      <tr><td>檔名無法完整解析</td><td>檔名沒有 <code>院區0511-0524</code> 這種格式。改名再試</td></tr>
+      <tr><td>找不到 labeno 欄位</td><td>檔案不是 R1110 匯出的格式。請確認從展望「特定申報資料列印」匯出</td></tr>
+      <tr><td>連線失敗</td><td>Web App URL 沒設定，或 Apps Script 已停用，或網路問題</td></tr>
+      <tr><td>此檔案已上傳過</td><td>同檔名已寫入 Sheet。要覆寫請先到 Sheet 刪掉舊資料</td></tr>
+    </table>
+  </div>
+
+  <div class="card">
+    <h2>📌 容錯規則小提醒</h2>
+    <p>
+      櫃檯打資料偶爾會把「減」打成「檢」，或大小寫不一致，本工具都會自動辨識：
+    </p>
+    <ul>
+      <li><b>減</b> 可寫成：減 / 檢 / 簡 / 鑑</li>
+      <li><b>拿</b> 可寫成：拿 / 那 / 哪 / 納 / 拎</li>
+      <li><b>初</b> 可寫成：初 / 出 / 除 / 楚</li>
+      <li><b>電</b> 可寫成：電 / 店 / 點 / 殿</li>
+      <li><b>寄</b> 可寫成：寄 / 既 / 計 / 季 / 紀 / 即</li>
+      <li><b>V / O / M</b> 大小寫都可</li>
+      <li>週數 <b>1~20</b>、後綴 <b>轉 / .X / .P / .U / .G / .digit</b> 都可加</li>
+      <li>結尾若為 <code>T00</code>（例如 <code>減免T00</code>、<code>減重T00</code>）會排除</li>
+    </ul>
+    <p>
+      若發現某個應該保留的字眼被刪掉，請在篩選器的「已刪除明細」區塊截圖回報，
+      我把字加進規則庫。
+    </p>
+  </div>
+</div>
+</body>
+</html>
