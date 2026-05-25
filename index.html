@@ -498,9 +498,10 @@ function parseFilename(name) {
   return { clinic: base, dateRange: '' };
 }
 
-// ===== 組合範例 =====
+// ===== 組合範例（保留向下相容；元素不存在就跳過）=====
 (function fillCombos(){
   const list = document.getElementById('comboList');
+  if (!list) return;
   const pre = ['', '寄', '電', '寄電', 'V', 'O', 'M'];
   const mid = ['', '拿', '初'];
   const weeks = [1,2,3,4,5,6,7,8,10,12,16,20];
