@@ -151,7 +151,7 @@
   .batch-body { padding: 4px 0; }
   .batch-row {
     display: grid;
-    grid-template-columns: 1.7fr 0.9fr 1fr 0.7fr 0.7fr 0.7fr 1.3fr;
+    grid-template-columns: 1.6fr 0.8fr 0.95fr 0.6fr 0.6fr 0.6fr 0.6fr 1.2fr;
     gap: 8px; align-items: center;
     padding: 9px 16px;
     font-size: 12.5px;
@@ -313,6 +313,38 @@
     </div>
   </div>
 
+  <!-- 上傳區間設定 -->
+  <div class="card" style="padding:14px 22px">
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;font-size:13px">
+      <span style="font-weight:700;color:#334155">📅 上傳區間</span>
+      <label style="cursor:pointer"><input type="radio" name="rangeMode" value="auto" checked> 依檔名（預設）</label>
+      <label style="cursor:pointer"><input type="radio" name="rangeMode" value="force"> 強制指定（忽略檔名）</label>
+      <span id="rangeModeBadge" class="badge ok" style="margin-left:auto">依檔名</span>
+    </div>
+    <div style="font-size:11.5px;color:#94a3b8;margin-top:6px" id="rangeModeHint">
+      一律先讀檔名裡的區間（如 <code>三樹0511-0524.xlsx</code>）；只有檔名沒帶區間時，才會用下面指定的備援值。
+    </div>
+    <div id="manualRangeBox" style="margin-top:10px;padding-top:10px;border-top:1px solid #e2e8f0">
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12.5px">
+        <label style="color:#475569" id="manualPickLabel">備援區間</label>
+        <select id="manualRangePick" style="padding:6px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:12.5px"></select>
+        <span id="customDateWrap" class="hidden" style="display:flex;align-items:center;gap:6px">
+          <label style="color:#475569">起</label>
+          <input type="date" id="manualStart" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12.5px">
+          <label style="color:#475569">迄</label>
+          <input type="date" id="manualEnd" style="padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12.5px">
+        </span>
+        <span style="margin-left:auto;font-size:12px;color:#64748b">將寫入：
+          <b id="manualRangePreview" style="font-family:ui-monospace,Menlo,monospace;color:#0f172a">—</b></span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:12.5px;margin-top:8px">
+        <label style="color:#475569">院區覆寫（選填，僅單檔有效）</label>
+        <input id="manualClinic" placeholder="留空＝用檔名判斷" style="padding:5px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:12.5px;width:170px">
+        <span style="color:#94a3b8;font-size:11.5px">批次上傳時院區一律從各自檔名判斷，只有區間會套用上面的設定。</span>
+      </div>
+    </div>
+  </div>
+
   <!-- 拖檔區 -->
   <div class="card" style="padding:18px">
     <label for="file" id="dz" class="dropzone">
@@ -327,7 +359,8 @@
       <p class="dz-title">點此選擇或拖曳 XLSX 檔案</p>
       <p class="dz-sub">
         可一次選多檔（13 個院區）批次處理<br>
-        檔名請命名為 <code>院區+日期區間.xlsx</code>，例如 <code>三樹0511-0524.xlsx</code>
+        檔名建議為 <code>院區+日期區間.xlsx</code>，例如 <code>三樹0511-0524.xlsx</code>；<br>
+        <b>若檔名沒有區間</b>，請在上方切成「手動指定」自選區間
       </p>
       <span class="dz-hint">支援 .xlsx / .xls，拖檔或點擊皆可</span>
     </label>
@@ -350,11 +383,12 @@
         <div class="summary-block"><div class="label">日期區間</div><div class="value" id="sumRange">—</div></div>
       </div>
 
-      <div class="stats" style="grid-template-columns:repeat(4, 1fr)">
+      <div class="stats" style="grid-template-columns:repeat(5, 1fr)">
         <div class="stat"><div class="num" id="totalRows">0</div><div class="label">原始筆數</div></div>
         <div class="stat"><div class="num" style="color:#166534" id="keptRows">0</div><div class="label">保留筆數（=週次）</div></div>
         <div class="stat"><div class="num" style="color:#991b1b" id="removedRows">0</div><div class="label">刪除筆數</div></div>
         <div class="stat"><div class="num" style="color:#1d4ed8" id="totalPersons">0</div><div class="label">人次（人頭）</div></div>
+        <div class="stat"><div class="num" style="color:#7c3aed" id="firstRows">0</div><div class="label">初診筆數<span style="color:#a78bfa"> ／ 人次 <b id="firstPersonsCell">0</b></span></div></div>
       </div>
 
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
@@ -391,9 +425,57 @@
     </div>
   </div>
 
+  <!-- 自訂日期區間檢視 -->
+  <div class="card">
+    <h2>🔎 自訂區間檢視（小日曆）
+      <span style="font-weight:400;font-size:12px;color:#64748b;margin-left:8px">不受上傳時的區間切分限制，直接照就診日期算</span>
+    </h2>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;font-size:13px">
+      <label style="color:#475569">起</label>
+      <input type="date" id="cvStart" style="padding:6px 9px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px">
+      <label style="color:#475569">迄</label>
+      <input type="date" id="cvEnd" style="padding:6px 9px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px">
+      <button class="btn" id="cvGo" style="padding:7px 16px;font-size:13px">查詢</button>
+      <span id="cvStatus" style="font-size:12.5px;color:#64748b"></span>
+      <button class="btn secondary" id="cvExport" style="margin-left:auto;padding:6px 14px;font-size:12.5px">📥 匯出此區間</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;font-size:12px;color:#64748b">
+      <span>快速選：</span>
+      <button class="btn secondary cv-quick" data-q="14" style="padding:4px 10px;font-size:11.5px">最近 14 天</button>
+      <button class="btn secondary cv-quick" data-q="28" style="padding:4px 10px;font-size:11.5px">最近 28 天</button>
+      <button class="btn secondary cv-quick" data-q="thismonth" style="padding:4px 10px;font-size:11.5px">本月</button>
+      <button class="btn secondary cv-quick" data-q="lastmonth" style="padding:4px 10px;font-size:11.5px">上個月</button>
+      <button class="btn secondary cv-quick" data-q="all" style="padding:4px 10px;font-size:11.5px">全部資料</button>
+      <label style="margin-left:12px;cursor:pointer"><input type="checkbox" id="cvCompare" checked> 與前一個等長區間比較</label>
+      <label style="cursor:pointer"><input type="checkbox" id="cvDedupe" checked> 去除重複列</label>
+    </div>
+
+    <div id="cvEmpty" style="font-size:13px;color:#94a3b8;padding:10px 0">
+      選好起訖日期後按「查詢」。區間可以任意跨越、重疊原本的雙週切分。
+    </div>
+
+    <div id="cvContent" class="hidden">
+      <div id="cvSummary" class="stats" style="grid-template-columns:repeat(5, 1fr);margin-top:12px"></div>
+      <div id="cvWarn" class="hidden" style="font-size:12px;color:#92400e;background:#fef3c7;padding:8px 12px;border-radius:6px;margin-bottom:10px"></div>
+
+      <div class="section-title">🏥 各院區（本區間 vs 前一個等長區間）</div>
+      <table class="dt" id="cvTableClinic"></table>
+
+      <div class="section-title" style="margin-top:16px">👨‍⚕️ 各院區×醫師</div>
+      <table class="dt" id="cvTableClinicDoc"></table>
+
+      <div class="section-title" style="margin-top:16px">🧑‍🤝‍🧑 醫師跨院區總計</div>
+      <table class="dt" id="cvTableDoc"></table>
+
+      <div style="font-size:11px;color:#94a3b8;margin-top:6px">
+        依明細的就診日期（date 欄）逐筆判定，與上傳時填的「日期區間」無關。人次／週次／初診的定義與上方儀表板完全相同。
+      </div>
+    </div>
+  </div>
+
   <!-- 儀表板 -->
   <div class="card">
-    <h2>📊 區間儀表板（從 Google Sheet 即時計算）
+    <h2>📊 區間儀表板（依上傳時的區間切分）
       <button class="btn secondary" id="loadDash" style="margin-left:auto">重新載入</button>
     </h2>
     <div id="dashCtrl" class="hidden" style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
@@ -408,10 +490,13 @@
     </div>
 
     <div id="dashContent" class="hidden">
+      <div id="firstWarn" class="hidden" style="font-size:12px;color:#92400e;background:#fef3c7;padding:8px 12px;border-radius:6px;margin-bottom:10px">
+        ⚠️ 後端尚未回傳初診欄位（<code>first</code> / <code>firstPersons</code>），儀表板的初診欄暫時無法顯示。請更新 Apps Script 的 <code>action=aggregated</code> 統計並重新部署。
+      </div>
       <!-- 院區人次 / 週次 -->
       <div class="section-title">🏥 各院區人次 / 週次（本期 vs 上期）</div>
       <table class="dt" id="tableClinic"></table>
-      <div style="font-size:11px;color:#94a3b8;margin-top:4px">人次=不重複 kcstmr（同病患算 1 人）；週次=筆數（一筆 labeno 算一週次）</div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:4px">人次=不重複 kcstmr（同病患算 1 人）；週次=筆數（一筆 labeno 算一週次）；初診=labeno 含「初」或「出」</div>
 
       <!-- 院區 × 醫師 -->
       <div class="section-title" style="margin-top:16px">👨‍⚕️ 各院區×醫師 明細（本期 vs 上期）</div>
@@ -428,6 +513,8 @@
           顯示：
           <label style="cursor:pointer"><input type="radio" name="matrixMetric" value="count" checked> 週次（=筆數）</label>
           <label style="cursor:pointer;margin-left:10px"><input type="radio" name="matrixMetric" value="persons"> 人次（去重）</label>
+          <label id="matrixFirstLabel" class="hidden" style="cursor:pointer;margin-left:10px"><input type="radio" name="matrixMetric" value="first"> 初診（筆數）</label>
+          <label id="matrixFirstPLabel" class="hidden" style="cursor:pointer;margin-left:10px"><input type="radio" name="matrixMetric" value="firstPersons"> 初診（人次）</label>
         </span>
         <button class="btn secondary" id="exportMatrixBtn" style="margin-left:14px;padding:6px 14px;font-size:12.5px">📥 匯出週次表（貼進範本）</button>
       </div>
@@ -486,6 +573,14 @@ function matchRule(s) {
   return true;
 }
 
+// ===== 初診判定 =====
+// 規則：labeno 只要出現「初」或「出」（含容錯 除/楚）就算初診
+const reChu = new RegExp('[' + CHU + ']');
+function isFirstVisit(s) {
+  if (s === undefined || s === null || s === '') return false;
+  return reChu.test(String(s));
+}
+
 // ===== 檔名解析 =====
 // 期望格式：「院區+日期區間.xlsx」例如 三樹0511-0524.xlsx
 function parseFilename(name) {
@@ -497,6 +592,85 @@ function parseFilename(name) {
   }
   return { clinic: base, dateRange: '' };
 }
+
+// ===== 上傳區間：自動（檔名）／手動指定 =====
+function getRangeMode() {
+  const r = document.querySelector('input[name="rangeMode"]:checked');
+  return r ? r.value : 'auto';
+}
+function dateToMMDD(v) {
+  const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? m[2] + m[3] : '';
+}
+function getManualRange() {
+  const pick = document.getElementById('manualRangePick');
+  if (!pick) return '';
+  if (pick.value === '__custom__') {
+    const a = dateToMMDD(document.getElementById('manualStart').value);
+    const b = dateToMMDD(document.getElementById('manualEnd').value);
+    return (a && b) ? a + '-' + b : '';
+  }
+  return pick.value || '';
+}
+// 依「模式」決定要寫入資料庫的院區與區間
+// allowClinicOverride：只有單檔上傳才允許用畫面上的院區覆寫（批次一律走檔名）
+function resolveMeta(name, allowClinicOverride) {
+  const p = parseFilename(name);
+  let clinic = p.clinic, dateRange = p.dateRange;
+  const mode = getRangeMode();
+  const mr = getManualRange();
+  // 一律以「上傳者寫的檔名」為主；
+  // force = 明確要求忽略檔名；auto = 只有檔名沒帶區間時才用備援值。
+  if (mr && (mode === 'force' || !p.dateRange)) dateRange = mr;
+  // 檔名裡沒有區間時，parseFilename 會把整個檔名當院區 → 去掉尾端的數字/符號雜訊
+  if (!p.dateRange) clinic = String(p.clinic).replace(/[\s_\-–—.]*\d[\d\-_.~]*$/, '').trim() || p.clinic;
+  if (allowClinicOverride) {
+    const oc = (document.getElementById('manualClinic').value || '').trim();
+    if (oc) clinic = oc;
+  }
+  return { clinic, dateRange };
+}
+function updateRangeUI() {
+  const force = getRangeMode() === 'force';
+  const badge = document.getElementById('rangeModeBadge');
+  const pick = document.getElementById('manualRangePick');
+  const custom = document.getElementById('customDateWrap');
+  const hint = document.getElementById('rangeModeHint');
+  if (custom) custom.classList.toggle('hidden', !(pick && pick.value === '__custom__'));
+  const mr = getManualRange();
+  const pv = document.getElementById('manualRangePreview');
+  if (pv) pv.textContent = mr || '—';
+  const lbl = document.getElementById('manualPickLabel');
+  if (lbl) lbl.textContent = force ? '指定區間' : '備援區間';
+  if (hint) {
+    hint.innerHTML = force
+      ? '⚠️ 強制模式：所有檔案一律寫入下面指定的區間，<b>檔名裡的區間會被忽略</b>。'
+      : '一律先讀檔名裡的區間（如 <code>三樹0511-0524.xlsx</code>）；只有檔名沒帶區間時，才會用下面指定的備援值。';
+  }
+  if (badge) {
+    badge.textContent = force ? ('強制 ' + (mr || '未設定')) : '依檔名';
+    badge.className = 'badge ' + (force ? (mr ? 'warn' : 'err') : 'ok');
+  }
+}
+// 把資料庫裡既有的區間灌進下拉，方便「補上傳同一期」
+function syncManualRangeOptions() {
+  const pick = document.getElementById('manualRangePick');
+  if (!pick) return;
+  const prev = pick.value;
+  let ranges = [];
+  try { ranges = (dashData && dashData.ranges) ? dashData.ranges.slice().sort() : []; } catch (e) { ranges = []; }
+  pick.innerHTML = ranges.map(r => `<option value="${r}">${r}（既有）</option>`).join('')
+                 + '<option value="__custom__">✏️ 自訂新區間…</option>';
+  if (prev && [...pick.options].some(o => o.value === prev)) pick.value = prev;
+  else pick.value = '__custom__';
+  updateRangeUI();
+}
+document.addEventListener('change', e => {
+  if (!e.target) return;
+  if (e.target.name === 'rangeMode' || e.target.id === 'manualRangePick'
+      || e.target.id === 'manualStart' || e.target.id === 'manualEnd') updateRangeUI();
+});
+setTimeout(syncManualRangeOptions, 0);
 
 // ===== 組合範例（保留向下相容；元素不存在就跳過）=====
 (function fillCombos(){
@@ -691,7 +865,11 @@ function processWorkbook(wb, originalName) {
   const doctorWeeks = {};       // 週數
   const doctorPersons = {};     // 人次（去重 kcstmr 集合）
   const allPersons = {};        // 整份檔案的不重複病患
+  const doctorFirst = {};       // 初診筆數
+  const doctorFirstPersons = {};// 初診人次（去重 kcstmr）
+  const allFirstPersons = {};   // 整份檔案的不重複初診病患
   let total = 0;
+  let firstTotal = 0;           // 初診筆數合計
 
   for (const r of dataRows) {
     const allEmpty = (r || []).every(x => x === '' || x === undefined || x === null);
@@ -710,6 +888,8 @@ function processWorkbook(wb, originalName) {
         labeno: v
       });
       if (kc) allPersons[kc] = true;
+      const isFirst = isFirstVisit(v);
+      if (isFirst) { firstTotal++; if (kc) allFirstPersons[kc] = true; }
       if (cols.doctor >= 0) {
         const d = r[cols.doctor];
         if (d) {
@@ -718,6 +898,11 @@ function processWorkbook(wb, originalName) {
           doctorWeeks[key] = (doctorWeeks[key] || 0) + extractWeeks(v);
           if (!doctorPersons[key]) doctorPersons[key] = {};
           if (kc) doctorPersons[key][kc] = true;
+          if (isFirst) {
+            doctorFirst[key] = (doctorFirst[key] || 0) + 1;
+            if (!doctorFirstPersons[key]) doctorFirstPersons[key] = {};
+            if (kc) doctorFirstPersons[key][kc] = true;
+          }
         }
       }
     } else {
@@ -726,8 +911,8 @@ function processWorkbook(wb, originalName) {
     }
   }
 
-  // 解析檔名
-  const { clinic, dateRange } = parseFilename(originalName);
+  // 解析檔名／套用手動指定區間
+  const { clinic, dateRange } = resolveMeta(originalName, true);
 
   // 醫師別（含筆數、週數、人次）
   const docList = Object.entries(doctorCounter)
@@ -735,10 +920,13 @@ function processWorkbook(wb, originalName) {
       doctor: d,
       count: n,
       weeks: doctorWeeks[d] || 0,
-      persons: Object.keys(doctorPersons[d] || {}).length
+      persons: Object.keys(doctorPersons[d] || {}).length,
+      first: doctorFirst[d] || 0,
+      firstPersons: Object.keys(doctorFirstPersons[d] || {}).length
     }))
     .sort((a, b) => b.persons - a.persons || b.count - a.count);
   const totalPersons = Object.keys(allPersons).length;
+  const totalFirstPersons = Object.keys(allFirstPersons).length;
 
   // 組輸出工作表
   const outRows = headerRows.slice();
@@ -751,10 +939,12 @@ function processWorkbook(wb, originalName) {
   outRows.push(['保留筆數（週次）', keptData.length]);
   outRows.push(['刪除筆數', total - keptData.length]);
   outRows.push(['人次（不重複病患）', totalPersons]);
+  outRows.push(['初診筆數（labeno 含 初/出）', firstTotal]);
+  outRows.push(['初診人次（不重複病患）', totalFirstPersons]);
   outRows.push([]);
-  outRows.push(['醫師', '週次（=筆數）', '人次']);
-  for (const x of docList) outRows.push([x.doctor, x.count, x.persons]);
-  outRows.push(['總計', keptData.length, totalPersons]);
+  outRows.push(['醫師', '週次（=筆數）', '人次', '初診筆數', '初診人次']);
+  for (const x of docList) outRows.push([x.doctor, x.count, x.persons, x.first, x.firstPersons]);
+  outRows.push(['總計', keptData.length, totalPersons, firstTotal, totalFirstPersons]);
 
   const newWs = XLSX.utils.aoa_to_sheet(outRows);
   if (ws['!cols']) newWs['!cols'] = ws['!cols'];
@@ -772,6 +962,7 @@ function processWorkbook(wb, originalName) {
   lastResult = {
     clinic, dateRange, filename: originalName,
     total, kept: keptData.length, removed: total - keptData.length,
+    firstCount: firstTotal, firstPersons: totalFirstPersons,
     removedDetail, rows: keptStruct, outputBlob, outputName
   };
 
@@ -782,17 +973,22 @@ function processWorkbook(wb, originalName) {
   document.getElementById('keptRows').textContent  = keptData.length;
   document.getElementById('removedRows').textContent = total - keptData.length;
   document.getElementById('totalPersons').textContent = totalPersons;
+  document.getElementById('firstRows').textContent = firstTotal;
+  document.getElementById('firstPersonsCell').textContent = totalFirstPersons;
 
   // 醫師表（週次=筆數 / 人次）
   const docBox = document.getElementById('doctorBox');
   const dt = document.getElementById('doctorTable');
   if (docList.length) {
-    let html = '<thead><tr><th>醫師</th><th>週次（=筆數）</th><th>人次<span style="font-weight:400;color:#94a3b8;font-size:11px">（同病患算 1 人）</span></th></tr></thead><tbody>';
+    let html = '<thead><tr><th>醫師</th><th>週次（=筆數）</th><th>人次<span style="font-weight:400;color:#94a3b8;font-size:11px">（同病患算 1 人）</span></th><th>初診筆數</th><th>初診人次</th></tr></thead><tbody>';
     for (const x of docList) {
-      html += `<tr><td>${escapeHtml(x.doctor)}</td><td>${x.count}</td><td><b>${x.persons}</b></td></tr>`;
+      html += `<tr><td>${escapeHtml(x.doctor)}</td><td>${x.count}</td><td><b>${x.persons}</b></td>
+                   <td style="color:#7c3aed">${x.first || '<span style="color:#cbd5e1">·</span>'}</td>
+                   <td style="color:#7c3aed"><b>${x.firstPersons || '<span style="color:#cbd5e1;font-weight:400">·</span>'}</b></td></tr>`;
     }
     html += `<tr style="font-weight:600;background:#f8fafc">
-               <td>總計</td><td>${keptData.length}</td><td><b>${totalPersons}</b></td></tr></tbody>`;
+               <td>總計</td><td>${keptData.length}</td><td><b>${totalPersons}</b></td>
+               <td style="color:#7c3aed">${firstTotal}</td><td style="color:#7c3aed"><b>${totalFirstPersons}</b></td></tr></tbody>`;
     dt.innerHTML = html;
     docBox.classList.remove('hidden');
   } else {
@@ -873,13 +1069,14 @@ async function handleBatch(files) {
 
   // 初始化表格
   const items = Array.from(files).map(f => ({
-    name: f.name, file: f, status: '等待中', kept: 0, removed: 0, persons: 0,
+    name: f.name, file: f, status: '等待中', kept: 0, removed: 0, persons: 0, first: 0,
     clinic: '', dateRange: ''
   }));
   function render() {
     let html = '<div class="batch-row head">' +
                '<div>檔名</div><div>院區</div><div>區間</div>' +
-               '<div class="num">保留</div><div class="num">刪除</div><div class="num">人次</div><div>狀態</div></div>';
+               '<div class="num">保留</div><div class="num">刪除</div><div class="num">人次</div>' +
+               '<div class="num">初診</div><div>狀態</div></div>';
     for (const it of items) {
       let rowCls = 'pending', statCls = 'pending', statTxt = '等待中';
       if (it.status === '處理中') { rowCls = 'running'; statCls = 'running'; statTxt = '處理中'; }
@@ -893,6 +1090,7 @@ async function handleBatch(files) {
                 <div class="num">${it.kept || '—'}</div>
                 <div class="num">${it.removed || '—'}</div>
                 <div class="num">${it.persons || '—'}</div>
+                <div class="num" style="color:#7c3aed">${it.first || '—'}</div>
                 <div><span class="status-dot ${statCls}"><span class="dot"></span>${escapeHtml(statTxt)}</span></div>
               </div>`;
     }
@@ -914,6 +1112,7 @@ async function handleBatch(files) {
       it.kept = result.kept;
       it.removed = result.removed;
       it.persons = result.persons;
+      it.first = result.firstCount;
       if (!result.clinic || !result.dateRange) {
         it.status = '失敗'; it.error = '檔名無法解析';
         render(); done++;
@@ -927,6 +1126,7 @@ async function handleBatch(files) {
           clinic: result.clinic, dateRange: result.dateRange,
           filename: it.name, total: result.total,
           kept: result.kept, removed: result.removed,
+          firstCount: result.firstCount, firstPersons: result.firstPersons,
           removedDetail: result.removedDetail, rows: result.rows
         })
       });
@@ -961,9 +1161,10 @@ function processFileForBatch(wb, originalName) {
   if (!cols) throw new Error('找不到 labeno 欄位');
   const dataStart = cols.headerRow >= 0 ? cols.headerRow + 1 : 0;
   const allPersons = {};
+  const allFirstPersons = {};
   const keptStruct = [];
   const removedCounter = {};
-  let total = 0, keptN = 0, removedN = 0;
+  let total = 0, keptN = 0, removedN = 0, firstN = 0;
   for (const r of rows.slice(dataStart)) {
     const allEmpty = (r || []).every(x => x === '' || x === undefined || x === null);
     if (allEmpty) continue;
@@ -973,6 +1174,7 @@ function processFileForBatch(wb, originalName) {
       keptN++;
       const kc = cols.kcstmr >= 0 && r[cols.kcstmr] != null ? String(r[cols.kcstmr]).trim() : '';
       if (kc) allPersons[kc] = true;
+      if (isFirstVisit(v)) { firstN++; if (kc) allFirstPersons[kc] = true; }
       keptStruct.push({
         診別: cols.dyangle >= 0 ? r[cols.dyangle] : '',
         醫師: cols.doctor  >= 0 ? r[cols.doctor]  : '',
@@ -986,12 +1188,13 @@ function processFileForBatch(wb, originalName) {
       removedCounter[key] = (removedCounter[key] || 0) + 1;
     }
   }
-  const { clinic, dateRange } = parseFilename(originalName);
+  const { clinic, dateRange } = resolveMeta(originalName, false);
   const removedDetail = Object.entries(removedCounter).sort((a,b)=>b[1]-a[1])
                           .map(([k,n])=>k+'×'+n).join('、');
   return {
     clinic, dateRange, total, kept: keptN, removed: removedN,
     persons: Object.keys(allPersons).length,
+    firstCount: firstN, firstPersons: Object.keys(allFirstPersons).length,
     removedDetail, rows: keptStruct
   };
 }
@@ -1079,6 +1282,8 @@ async function loadDashboard() {
 function renderDashboard() {
   // 同步刷新已上傳紀錄清單（不論有沒有 dashboard 資料都要）
   renderUploaded();
+  syncManualRangeOptions();
+  cvInitDefaults();
   if (!dashData || !dashData.ranges || dashData.ranges.length === 0) {
     dashEmpty.textContent = 'Google Sheet 內目前沒有資料';
     dashEmpty.classList.remove('hidden');
@@ -1101,6 +1306,119 @@ function renderDashboard() {
   dashFooter.textContent = '資料載入時間：' + (dashData.generatedAt || '');
 }
 
+// 後端是否已提供初診欄位
+function dashHasFirst() {
+  const b = (dashData && dashData.byRangeClinic) || {};
+  for (const rng of Object.keys(b))
+    for (const c of Object.keys(b[rng]))
+      if (b[rng][c] && b[rng][c].first !== undefined) return true;
+  return false;
+}
+const F = (o, k) => (o && o[k] !== undefined && o[k] !== null) ? o[k] : 0;
+
+
+/**
+ * 產生「院區 / 院區×醫師 / 醫師」三張本期 vs 上期比較表的 HTML。
+ * 儀表板（依上傳區間）與自訂日期區間檢視共用同一套邏輯，數字定義保證一致。
+ */
+function buildCompareTables(curRC, prvRC, curRCD, prvRCD, curRD, prvRD, HF) {
+  const fTh = HF ? '<th>初診筆數</th><th>初診人次</th><th>初診人次變化</th>' : '';
+  const fTd = (c, p) => HF
+    ? `<td style="color:#7c3aed">${F(c,'first')}</td>
+       <td style="color:#7c3aed"><b>${F(c,'firstPersons')}</b></td>
+       <td>${fmtDelta(F(c,'firstPersons'), F(p,'firstPersons'))}</td>` : '';
+
+  // --- 表1：各院區 ---
+  const clinicSet = new Set([...Object.keys(curRC), ...Object.keys(prvRC)]);
+  const clinicRows = [];
+  let totP=0, totC=0, totPp=0, totCp=0, totF=0, totFP=0, totFPp=0;
+  for (const cli of clinicSet) {
+    const c = curRC[cli] || { persons:0, count:0 };
+    const p = prvRC[cli] || { persons:0, count:0 };
+    clinicRows.push({ clinic: cli, persons:c.persons||0, count:c.count||0,
+                      pPersons:p.persons||0, pCount:p.count||0, cur:c, prv:p });
+    totP += c.persons||0; totC += c.count||0; totPp += p.persons||0; totCp += p.count||0;
+    totF += F(c,'first'); totFP += F(c,'firstPersons'); totFPp += F(p,'firstPersons');
+  }
+  clinicRows.sort((a, b) => b.persons - a.persons);
+  let h1 = `<thead><tr><th>院區</th><th>人次（人頭）</th><th>週次（=筆數）</th>
+              <th>上期人次</th><th>人次變化</th><th>上期週次</th><th>週次變化</th>${fTh}</tr></thead><tbody>`;
+  for (const r of clinicRows) {
+    h1 += `<tr><td>${escapeHtml(r.clinic)}</td>
+              <td><b>${r.persons}</b></td><td>${r.count}</td>
+              <td>${r.pPersons}</td><td>${fmtDelta(r.persons, r.pPersons)}</td>
+              <td>${r.pCount}</td><td>${fmtDelta(r.count, r.pCount)}</td>
+              ${fTd(r.cur, r.prv)}</tr>`;
+  }
+  h1 += `<tr style="font-weight:700;background:#f1f5f9">
+           <td>區間合計</td><td><b>${totP}</b></td><td>${totC}</td>
+           <td>${totPp}</td><td>${fmtDelta(totP, totPp)}</td>
+           <td>${totCp}</td><td>${fmtDelta(totC, totCp)}</td>
+           ${HF ? `<td style="color:#7c3aed">${totF}</td><td style="color:#7c3aed"><b>${totFP}</b></td><td>${fmtDelta(totFP, totFPp)}</td>` : ''}</tr></tbody>`;
+
+  // --- 表2：院區 × 醫師 ---
+  const rowsCD = [];
+  for (const cli of Object.keys(curRCD))
+    for (const doc of Object.keys(curRCD[cli])) {
+      const c = curRCD[cli][doc];
+      const p = (prvRCD[cli] && prvRCD[cli][doc]) || { persons:0, count:0 };
+      rowsCD.push({ clinic:cli, doctor:doc, persons:c.persons||0, count:c.count||0,
+                    pPersons:p.persons||0, pCount:p.count||0, cur:c, prv:p });
+    }
+  for (const cli of Object.keys(prvRCD))
+    for (const doc of Object.keys(prvRCD[cli])) {
+      if (curRCD[cli] && curRCD[cli][doc]) continue;
+      const p = prvRCD[cli][doc];
+      rowsCD.push({ clinic:cli, doctor:doc, persons:0, count:0,
+                    pPersons:p.persons||0, pCount:p.count||0, cur:{}, prv:p });
+    }
+  rowsCD.sort((a, b) => a.clinic !== b.clinic ? (a.clinic < b.clinic ? -1 : 1) : (b.persons - a.persons));
+  let h2 = `<thead><tr><th>院區</th><th>醫師</th><th>人次</th><th>週次</th>
+              <th>上期人次</th><th>人次變化</th><th>上期週次</th><th>週次變化</th>${fTh}</tr></thead><tbody>`;
+  let lastClinic = '';
+  for (const r of rowsCD) {
+    const bg = r.clinic !== lastClinic ? ' style="border-top:2px solid #cbd5e1"' : '';
+    h2 += `<tr${bg}><td>${escapeHtml(r.clinic)}</td>
+              <td>${escapeHtml(r.doctor)}</td>
+              <td><b>${r.persons}</b></td><td>${r.count}</td>
+              <td>${r.pPersons}</td><td>${fmtDelta(r.persons, r.pPersons)}</td>
+              <td>${r.pCount}</td><td>${fmtDelta(r.count, r.pCount)}</td>
+              ${fTd(r.cur, r.prv)}</tr>`;
+    lastClinic = r.clinic;
+  }
+  h2 += '</tbody>';
+
+  // --- 表3：醫師跨院區總計 ---
+  const docSet = new Set([...Object.keys(curRD), ...Object.keys(prvRD)]);
+  const docRows = [];
+  let tc=0, tp=0, tpp=0, tcp=0, tf=0, tfp=0, tfpp=0;
+  for (const doc of docSet) {
+    const c = curRD[doc] || { persons:0, count:0 };
+    const p = prvRD[doc] || { persons:0, count:0 };
+    docRows.push({ doctor:doc, persons:c.persons||0, count:c.count||0,
+                   pPersons:p.persons||0, pCount:p.count||0, cur:c, prv:p });
+    tc += c.count||0; tp += c.persons||0; tcp += p.count||0; tpp += p.persons||0;
+    tf += F(c,'first'); tfp += F(c,'firstPersons'); tfpp += F(p,'firstPersons');
+  }
+  docRows.sort((a, b) => b.persons - a.persons);
+  let h3 = `<thead><tr><th>醫師</th><th>人次</th><th>週次</th>
+              <th>上期人次</th><th>人次變化</th><th>上期週次</th><th>週次變化</th>${fTh}</tr></thead><tbody>`;
+  for (const r of docRows) {
+    h3 += `<tr><td>${escapeHtml(r.doctor)}</td>
+              <td><b>${r.persons}</b></td><td>${r.count}</td>
+              <td>${r.pPersons}</td><td>${fmtDelta(r.persons, r.pPersons)}</td>
+              <td>${r.pCount}</td><td>${fmtDelta(r.count, r.pCount)}</td>
+              ${fTd(r.cur, r.prv)}</tr>`;
+  }
+  h3 += `<tr style="font-weight:700;background:#f1f5f9">
+           <td>總計</td><td><b>${tp}</b></td><td>${tc}</td>
+           <td>${tpp}</td><td>${fmtDelta(tp, tpp)}</td>
+           <td>${tcp}</td><td>${fmtDelta(tc, tcp)}</td>
+           ${HF ? `<td style="color:#7c3aed">${tf}</td><td style="color:#7c3aed"><b>${tfp}</b></td><td>${fmtDelta(tfp, tfpp)}</td>` : ''}</tr></tbody>`;
+
+  return { clinic: h1, clinicDoc: h2, doctor: h3 };
+}
+
 function renderTables() {
   const range = dashRangeSel.value;
   if (!range) return;
@@ -1121,89 +1439,24 @@ function renderTables() {
   const curRCD = byRCD[range] || {}; const prvRCD = (prevRange && byRCD[prevRange]) || {};
   const curRD  = byRD[range]  || {}; const prvRD  = (prevRange && byRD[prevRange])  || {};
 
-  // === Table 1: 院區人次 / 週次 ===
-  const clinicSet = new Set([...Object.keys(curRC), ...Object.keys(prvRC)]);
-  const clinicRows = [];
-  let totP=0, totC=0, totPp=0, totCp=0;
-  for (const cli of clinicSet) {
-    const c = curRC[cli] || { persons:0, count:0 };
-    const p = prvRC[cli] || { persons:0, count:0 };
-    clinicRows.push({ clinic: cli, persons:c.persons, count:c.count,
-                      pPersons:p.persons, pCount:p.count });
-    totP += c.persons; totC += c.count; totPp += p.persons; totCp += p.count;
-  }
-  clinicRows.sort((a, b) => b.persons - a.persons);
-  let h1 = `<thead><tr><th>院區</th><th>人次（人頭）</th><th>週次（=筆數）</th>
-              <th>上期人次</th><th>人次變化</th><th>上期週次</th><th>週次變化</th></tr></thead><tbody>`;
-  for (const r of clinicRows) {
-    h1 += `<tr><td>${escapeHtml(r.clinic)}</td>
-              <td><b>${r.persons}</b></td><td>${r.count}</td>
-              <td>${r.pPersons}</td><td>${fmtDelta(r.persons, r.pPersons)}</td>
-              <td>${r.pCount}</td><td>${fmtDelta(r.count, r.pCount)}</td></tr>`;
-  }
-  h1 += `<tr style="font-weight:700;background:#f1f5f9">
-           <td>區間合計</td><td><b>${totP}</b></td><td>${totC}</td>
-           <td>${totPp}</td><td>${fmtDelta(totP, totPp)}</td>
-           <td>${totCp}</td><td>${fmtDelta(totC, totCp)}</td></tr></tbody>`;
-  document.getElementById('tableClinic').innerHTML = h1;
-
-  // === Table 2: 院區 × 醫師 ===
-  const rowsCD = [];
-  for (const cli of Object.keys(curRCD))
-    for (const doc of Object.keys(curRCD[cli])) {
-      const c = curRCD[cli][doc];
-      const p = (prvRCD[cli] && prvRCD[cli][doc]) || { persons:0, count:0 };
-      rowsCD.push({ clinic:cli, doctor:doc, persons:c.persons, count:c.count,
-                    pPersons:p.persons, pCount:p.count });
+  // === 三張比較表（共用產生器）===
+  const HF = dashHasFirst();
+  document.getElementById('firstWarn').classList.toggle('hidden', HF);
+  const mfl = document.getElementById('matrixFirstLabel');
+  const mfp = document.getElementById('matrixFirstPLabel');
+  if (mfl) mfl.classList.toggle('hidden', !HF);
+  if (mfp) mfp.classList.toggle('hidden', !HF);
+  if (!HF) {
+    const cur = document.querySelector('input[name="matrixMetric"]:checked');
+    if (cur && (cur.value === 'first' || cur.value === 'firstPersons')) {
+      document.querySelector('input[name="matrixMetric"][value="count"]').checked = true;
     }
-  for (const cli of Object.keys(prvRCD))
-    for (const doc of Object.keys(prvRCD[cli])) {
-      if (curRCD[cli] && curRCD[cli][doc]) continue;
-      const p = prvRCD[cli][doc];
-      rowsCD.push({ clinic:cli, doctor:doc, persons:0, count:0,
-                    pPersons:p.persons, pCount:p.count });
-    }
-  rowsCD.sort((a, b) => a.clinic !== b.clinic ? (a.clinic < b.clinic ? -1 : 1) : (b.persons - a.persons));
-  let h2 = `<thead><tr><th>院區</th><th>醫師</th><th>人次</th><th>週次</th>
-              <th>上期人次</th><th>人次變化</th><th>上期週次</th><th>週次變化</th></tr></thead><tbody>`;
-  let lastClinic = '';
-  for (const r of rowsCD) {
-    const bg = r.clinic !== lastClinic ? ' style="border-top:2px solid #cbd5e1"' : '';
-    h2 += `<tr${bg}><td>${escapeHtml(r.clinic)}</td>
-              <td>${escapeHtml(r.doctor)}</td>
-              <td><b>${r.persons}</b></td><td>${r.count}</td>
-              <td>${r.pPersons}</td><td>${fmtDelta(r.persons, r.pPersons)}</td>
-              <td>${r.pCount}</td><td>${fmtDelta(r.count, r.pCount)}</td></tr>`;
-    lastClinic = r.clinic;
   }
-  h2 += '</tbody>';
-  document.getElementById('tableClinicDoc').innerHTML = h2;
 
-  // === Table 3: 醫師跨院區總計（人次為去重後）===
-  const docSet = new Set([...Object.keys(curRD), ...Object.keys(prvRD)]);
-  const docRows = [];
-  let tc=0, tp=0, tpp=0, tcp=0;
-  for (const doc of docSet) {
-    const c = curRD[doc] || { persons:0, count:0 };
-    const p = prvRD[doc] || { persons:0, count:0 };
-    docRows.push({ doctor:doc, persons:c.persons, count:c.count,
-                   pPersons:p.persons, pCount:p.count });
-    tc += c.count; tp += c.persons; tcp += p.count; tpp += p.persons;
-  }
-  docRows.sort((a, b) => b.persons - a.persons);
-  let h3 = `<thead><tr><th>醫師</th><th>人次</th><th>週次</th>
-              <th>上期人次</th><th>人次變化</th><th>上期週次</th><th>週次變化</th></tr></thead><tbody>`;
-  for (const r of docRows) {
-    h3 += `<tr><td>${escapeHtml(r.doctor)}</td>
-              <td><b>${r.persons}</b></td><td>${r.count}</td>
-              <td>${r.pPersons}</td><td>${fmtDelta(r.persons, r.pPersons)}</td>
-              <td>${r.pCount}</td><td>${fmtDelta(r.count, r.pCount)}</td></tr>`;
-  }
-  h3 += `<tr style="font-weight:700;background:#f1f5f9">
-           <td>總計</td><td><b>${tp}</b></td><td>${tc}</td>
-           <td>${tpp}</td><td>${fmtDelta(tp, tpp)}</td>
-           <td>${tcp}</td><td>${fmtDelta(tc, tcp)}</td></tr></tbody>`;
-  document.getElementById('tableDoc').innerHTML = h3;
+  const t = buildCompareTables(curRC, prvRC, curRCD, prvRCD, curRD, prvRD, HF);
+  document.getElementById('tableClinic').innerHTML = t.clinic;
+  document.getElementById('tableClinicDoc').innerHTML = t.clinicDoc;
+  document.getElementById('tableDoc').innerHTML = t.doctor;
 
   renderMatrix();
 }
@@ -1264,7 +1517,10 @@ function renderMatrix() {
   function val(cli, doc, rng) {
     const x = data[cli] && data[cli][doc] && data[cli][doc][rng];
     if (!x) return 0;
-    return metric === 'persons' ? x.persons : x.count;
+    if (metric === 'persons') return x.persons || 0;
+    if (metric === 'first') return x.first || 0;
+    if (metric === 'firstPersons') return x.firstPersons || 0;
+    return x.count || 0;
   }
 
   let html = '<thead><tr><th style="position:sticky;top:0;background:#f1f5f9;z-index:2">院區</th>';
@@ -1374,18 +1630,235 @@ function exportMatrix() {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, '各醫師含拿藥明細');
+
+  // 第二分頁：各醫師初診（後端有提供 first 才輸出）
+  if (dashHasFirst()) {
+    const fr = [];
+    fr.push(['金鶯診所　減重門診　各醫師初診筆數（labeno 含「初」或「出」）']);
+    fr.push([]);
+    fr.push(['院區', '醫師', ...periodLabels, '合計']);
+    let gTot = ranges.map(() => 0);
+    for (const cli of clinics) {
+      let cTot = ranges.map(() => 0);
+      let firstDoc = true;
+      for (const doc of doctorsByClinic[cli]) {
+        const cells = ranges.map(r => {
+          const x = data[cli] && data[cli][doc] && data[cli][doc][r];
+          return (x && x.first) ? x.first : 0;
+        });
+        cells.forEach((v, i) => { cTot[i] += v; });
+        fr.push([firstDoc ? cli : '', doc, ...cells, cells.reduce((a,b)=>a+b,0)]);
+        firstDoc = false;
+      }
+      fr.push(['', '院區初診總計', ...cTot, cTot.reduce((a,b)=>a+b,0)]);
+      cTot.forEach((v, i) => { gTot[i] += v; });
+    }
+    fr.push(['全院區', '初診合計', ...gTot, gTot.reduce((a,b)=>a+b,0)]);
+    const ws2 = XLSX.utils.aoa_to_sheet(fr);
+    ws2['!cols'] = [{wch:12}, {wch:18}, ...ranges.map(()=>({wch:14})), {wch:12}];
+    ws2['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: ranges.length + 2 } }];
+    XLSX.utils.book_append_sheet(wb, ws2, '各醫師初診');
+  }
   const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
   const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
 
   const today = new Date();
   const yyyymmdd = today.toISOString().slice(0,10).replace(/-/g,'');
-  const filename = `各醫師含拿藥明細_${yyyymmdd}.xlsx`;
+  const filename = `各醫師含拿藥明細${dashHasFirst() ? '＋初診' : ''}_${yyyymmdd}.xlsx`;
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url; a.download = filename;
   document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
 }
+
+// ===== 自訂日期區間檢視（小日曆）=====
+let cvData = null;
+
+function ymdIntToInput(n) {          // 20260720 -> '2026-07-20'
+  if (!n) return '';
+  const s = String(n);
+  return s.slice(0,4) + '-' + s.slice(4,6) + '-' + s.slice(6,8);
+}
+function dateObjToInput(d) {
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+function cvSetDates(a, b) {
+  document.getElementById('cvStart').value = a;
+  document.getElementById('cvEnd').value = b;
+}
+// 資料載入後，把小日曆預設成「資料庫裡最後 14 天」
+function cvInitDefaults() {
+  const st = document.getElementById('cvStart');
+  if (!st || st.value) return;
+  if (dashData && dashData.dateMax) {
+    const end = ymdIntToInput(dashData.dateMax);
+    const d = new Date(end); d.setDate(d.getDate() - 13);
+    const min = dashData.dateMin ? ymdIntToInput(dashData.dateMin) : '';
+    cvSetDates(min && dateObjToInput(d) < min ? min : dateObjToInput(d), end);
+  } else {
+    const now = new Date(); const s2 = new Date(); s2.setDate(now.getDate() - 13);
+    cvSetDates(dateObjToInput(s2), dateObjToInput(now));
+  }
+}
+
+document.addEventListener('click', e => {
+  const b = e.target && e.target.closest ? e.target.closest('.cv-quick') : null;
+  if (!b) return;
+  const q = b.getAttribute('data-q');
+  const maxD = (dashData && dashData.dateMax) ? new Date(ymdIntToInput(dashData.dateMax)) : new Date();
+  if (q === 'all') {
+    if (dashData && dashData.dateMin && dashData.dateMax) {
+      cvSetDates(ymdIntToInput(dashData.dateMin), ymdIntToInput(dashData.dateMax));
+    }
+  } else if (q === 'thismonth') {
+    const s2 = new Date(maxD.getFullYear(), maxD.getMonth(), 1);
+    const e2 = new Date(maxD.getFullYear(), maxD.getMonth() + 1, 0);
+    cvSetDates(dateObjToInput(s2), dateObjToInput(e2));
+  } else if (q === 'lastmonth') {
+    const s2 = new Date(maxD.getFullYear(), maxD.getMonth() - 1, 1);
+    const e2 = new Date(maxD.getFullYear(), maxD.getMonth(), 0);
+    cvSetDates(dateObjToInput(s2), dateObjToInput(e2));
+  } else {
+    const n = parseInt(q, 10);
+    const s2 = new Date(maxD); s2.setDate(maxD.getDate() - (n - 1));
+    cvSetDates(dateObjToInput(s2), dateObjToInput(maxD));
+  }
+  cvLoad();
+});
+
+document.getElementById('cvGo').addEventListener('click', cvLoad);
+['cvCompare','cvDedupe'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('change', () => { if (cvData) cvLoad(); });
+});
+
+async function cvLoad() {
+  const from = document.getElementById('cvStart').value;
+  const to   = document.getElementById('cvEnd').value;
+  const st   = document.getElementById('cvStatus');
+  if (!from || !to) { st.textContent = '請先選起訖日期'; st.style.color = '#991b1b'; return; }
+  if (from > to)   { st.textContent = '起始日不能晚於結束日'; st.style.color = '#991b1b'; return; }
+
+  const btn = document.getElementById('cvGo');
+  btn.disabled = true; btn.textContent = '查詢中…';
+  st.textContent = ''; st.style.color = '#64748b';
+  const ep = getEndpoint();
+  const cmp = document.getElementById('cvCompare').checked ? '1' : '0';
+  const ded = document.getElementById('cvDedupe').checked ? '1' : '0';
+  const url = ep + (ep.includes('?') ? '&' : '?')
+            + 'action=custom&from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to)
+            + '&compare=' + cmp + '&dedupe=' + ded;
+  try {
+    const resp = await fetch(url);
+    const obj = JSON.parse(await resp.text());
+    if (obj.status !== 'ok') throw new Error(obj.message || '查詢失敗');
+    cvData = obj;
+    renderCustomView();
+  } catch (err) {
+    st.textContent = '❌ ' + (err && err.message ? err.message : err);
+    st.style.color = '#991b1b';
+    if (String(err).indexOf('JSON') >= 0 || String(err).indexOf('Unexpected') >= 0) {
+      st.textContent = '❌ 後端還沒支援自訂區間，請先更新並重新部署 Apps Script';
+    }
+  } finally {
+    btn.disabled = false; btn.textContent = '查詢';
+  }
+}
+
+function renderCustomView() {
+  const empty = document.getElementById('cvEmpty');
+  const content = document.getElementById('cvContent');
+  if (!cvData || cvData.empty) {
+    empty.textContent = '此區間沒有資料';
+    empty.classList.remove('hidden');
+    content.classList.add('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+  content.classList.remove('hidden');
+
+  // 摘要
+  let persons = 0, count = 0, first = 0, firstP = 0;
+  const seenP = {}, seenFP = {};
+  for (const cli in cvData.byClinic) {
+    const c = cvData.byClinic[cli];
+    count += c.count || 0;
+    persons += c.persons || 0;      // 跨院區不去重（同儀表板慣例）
+    first += c.first || 0;
+    firstP += c.firstPersons || 0;
+  }
+  const cliN = Object.keys(cvData.byClinic).length;
+  document.getElementById('cvSummary').innerHTML = `
+    <div class="stat"><div class="num">${cvData.days}</div><div class="label">天數（${cvData.label}）</div></div>
+    <div class="stat"><div class="num" style="color:#166534">${count}</div><div class="label">週次（=筆數）</div></div>
+    <div class="stat"><div class="num" style="color:#1d4ed8">${persons}</div><div class="label">人次（各院區加總）</div></div>
+    <div class="stat"><div class="num" style="color:#7c3aed">${first}</div><div class="label">初診筆數 ／ 人次 <b>${firstP}</b></div></div>
+    <div class="stat"><div class="num">${cliN}</div><div class="label">有資料院區數</div></div>`;
+
+  // 提醒
+  const warn = document.getElementById('cvWarn');
+  const msgs = [];
+  if (cvData.dupSkipped) msgs.push('已略過 ' + cvData.dupSkipped + ' 筆完全重複的列（同院區/醫師/病患/日期/labeno）。');
+  if (cvData.invalidTotal) {
+    msgs.push('資料庫中有 ' + cvData.invalidTotal + ' 筆日期不合法（例如 7/32），這些列可能落在任何區間之外而漏算。範例：'
+              + escapeHtml((cvData.invalidSamples || []).join('、')));
+  }
+  if (msgs.length) { warn.innerHTML = '⚠️ ' + msgs.join('<br>'); warn.classList.remove('hidden'); }
+  else warn.classList.add('hidden');
+
+  const st = document.getElementById('cvStatus');
+  st.style.color = '#166534';
+  st.textContent = '✅ ' + cvData.label + '（' + cvData.days + ' 天，' + cvData.rows + ' 筆）'
+                 + (cvData.prevLabel ? ' vs ' + cvData.prevLabel + '（' + cvData.prevRows + ' 筆）' : '');
+
+  const HF = cvData.hasFirst !== false;
+  const t = buildCompareTables(
+    cvData.byClinic    || {}, cvData.prevByClinic    || {},
+    cvData.byClinicDoc || {}, cvData.prevByClinicDoc || {},
+    cvData.byDoctor    || {}, cvData.prevByDoctor    || {}, HF);
+  document.getElementById('cvTableClinic').innerHTML = t.clinic;
+  document.getElementById('cvTableClinicDoc').innerHTML = t.clinicDoc;
+  document.getElementById('cvTableDoc').innerHTML = t.doctor;
+}
+
+// 匯出自訂區間（院區×醫師）
+document.getElementById('cvExport').addEventListener('click', () => {
+  if (typeof XLSX === 'undefined') { alert('XLSX 函式庫未載入，請等幾秒再試'); return; }
+  if (!cvData || cvData.empty) { alert('請先查詢一個有資料的區間'); return; }
+  const rows = [];
+  rows.push(['金鶯診所　減重門診　自訂區間統計　' + cvData.label + '（' + cvData.days + ' 天）']);
+  rows.push([]);
+  rows.push(['院區', '醫師', '週次（=筆數）', '人次', '初診筆數', '初診人次']);
+  const clinics = Object.keys(cvData.byClinicDoc).sort();
+  for (const cli of clinics) {
+    const docs = Object.keys(cvData.byClinicDoc[cli]).sort((a, b) => {
+      if (a === '減重拿藥') return 1;
+      if (b === '減重拿藥') return -1;
+      return a.localeCompare(b, 'zh');
+    });
+    let f = true;
+    for (const doc of docs) {
+      const x = cvData.byClinicDoc[cli][doc];
+      rows.push([f ? cli : '', doc, x.count || 0, x.persons || 0, x.first || 0, x.firstPersons || 0]);
+      f = false;
+    }
+    const c = cvData.byClinic[cli] || {};
+    rows.push(['', '院區合計', c.count || 0, c.persons || 0, c.first || 0, c.firstPersons || 0]);
+  }
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{wch:12},{wch:18},{wch:14},{wch:10},{wch:12},{wch:12}];
+  ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:5} }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, '自訂區間');
+  const buf = XLSX.write(wb, { bookType:'xlsx', type:'array' });
+  const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = '自訂區間統計_' + cvData.label + '.xlsx';
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
+});
 
 // 上傳到 Sheet
 uploadBtn.addEventListener('click', async () => {
@@ -1405,6 +1878,8 @@ uploadBtn.addEventListener('click', async () => {
     total: lastResult.total,
     kept: lastResult.kept,
     removed: lastResult.removed,
+    firstCount: lastResult.firstCount,
+    firstPersons: lastResult.firstPersons,
     removedDetail: lastResult.removedDetail,
     rows: lastResult.rows
   };
