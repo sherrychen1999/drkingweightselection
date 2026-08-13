@@ -388,7 +388,7 @@
         <div class="stat"><div class="num" style="color:#166534" id="keptRows">0</div><div class="label">保留筆數（=週次）</div></div>
         <div class="stat"><div class="num" style="color:#991b1b" id="removedRows">0</div><div class="label">刪除筆數</div></div>
         <div class="stat"><div class="num" style="color:#1d4ed8" id="totalPersons">0</div><div class="label">人次（人頭）</div></div>
-        <div class="stat"><div class="num" style="color:#7c3aed" id="firstRows">0</div><div class="label">初診筆數<span style="color:#a78bfa"> ／ 人次 <b id="firstPersonsCell">0</b></span></div></div>
+        <div class="stat"><div class="num" style="color:#7c3aed" id="firstRows">0</div><div class="label">初診週次<span style="color:#a78bfa"> ／ 人次 <b id="firstPersonsCell">0</b></span></div></div>
       </div>
 
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
@@ -496,7 +496,7 @@
       <!-- 院區人次 / 週次 -->
       <div class="section-title">🏥 各院區人次 / 週次（本期 vs 上期）</div>
       <table class="dt" id="tableClinic"></table>
-      <div style="font-size:11px;color:#94a3b8;margin-top:4px">人次=不重複 kcstmr（同病患算 1 人）；週次=筆數（一筆 labeno 算一週次）；初診=labeno 含「初」或「出」</div>
+      <div style="font-size:11px;color:#94a3b8;margin-top:4px">人次=不重複 kcstmr（同病患算 1 人）；週次=筆數（一筆 labeno 算一週次）；初診=labeno 含「初」或「出」，同樣分「週次（=筆數）」與「人次（去重）」兩種口徑</div>
 
       <!-- 院區 × 醫師 -->
       <div class="section-title" style="margin-top:16px">👨‍⚕️ 各院區×醫師 明細（本期 vs 上期）</div>
@@ -513,7 +513,7 @@
           顯示：
           <label style="cursor:pointer"><input type="radio" name="matrixMetric" value="count" checked> 週次（=筆數）</label>
           <label style="cursor:pointer;margin-left:10px"><input type="radio" name="matrixMetric" value="persons"> 人次（去重）</label>
-          <label id="matrixFirstLabel" class="hidden" style="cursor:pointer;margin-left:10px"><input type="radio" name="matrixMetric" value="first"> 初診（筆數）</label>
+          <label id="matrixFirstLabel" class="hidden" style="cursor:pointer;margin-left:10px"><input type="radio" name="matrixMetric" value="first"> 初診（週次）</label>
           <label id="matrixFirstPLabel" class="hidden" style="cursor:pointer;margin-left:10px"><input type="radio" name="matrixMetric" value="firstPersons"> 初診（人次）</label>
         </span>
         <button class="btn secondary" id="exportMatrixBtn" style="margin-left:14px;padding:6px 14px;font-size:12.5px">📥 匯出週次表（貼進範本）</button>
@@ -574,8 +574,10 @@ function matchRule(s) {
 }
 
 // ===== 初診判定 =====
-// 規則：labeno 只要出現「初」或「出」（含容錯 除/楚）就算初診
-const reChu = new RegExp('[' + CHU + ']');
+// 規則：labeno 出現「初」或「出」才算初診。
+// 刻意不收「除/楚」——那兩字會誤中「扣除」之類的註記（CHU 常數仍供保留規則使用，勿動）。
+const FIRST_CHARS = '初出';
+const reChu = new RegExp('[' + FIRST_CHARS + ']');
 function isFirstVisit(s) {
   if (s === undefined || s === null || s === '') return false;
   return reChu.test(String(s));
@@ -939,10 +941,10 @@ function processWorkbook(wb, originalName) {
   outRows.push(['保留筆數（週次）', keptData.length]);
   outRows.push(['刪除筆數', total - keptData.length]);
   outRows.push(['人次（不重複病患）', totalPersons]);
-  outRows.push(['初診筆數（labeno 含 初/出）', firstTotal]);
+  outRows.push(['初診週次（=筆數，labeno 含 初/出）', firstTotal]);
   outRows.push(['初診人次（不重複病患）', totalFirstPersons]);
   outRows.push([]);
-  outRows.push(['醫師', '週次（=筆數）', '人次', '初診筆數', '初診人次']);
+  outRows.push(['醫師', '週次（=筆數）', '人次', '初診週次', '初診人次']);
   for (const x of docList) outRows.push([x.doctor, x.count, x.persons, x.first, x.firstPersons]);
   outRows.push(['總計', keptData.length, totalPersons, firstTotal, totalFirstPersons]);
 
@@ -980,7 +982,7 @@ function processWorkbook(wb, originalName) {
   const docBox = document.getElementById('doctorBox');
   const dt = document.getElementById('doctorTable');
   if (docList.length) {
-    let html = '<thead><tr><th>醫師</th><th>週次（=筆數）</th><th>人次<span style="font-weight:400;color:#94a3b8;font-size:11px">（同病患算 1 人）</span></th><th>初診筆數</th><th>初診人次</th></tr></thead><tbody>';
+    let html = '<thead><tr><th>醫師</th><th>週次（=筆數）</th><th>人次<span style="font-weight:400;color:#94a3b8;font-size:11px">（同病患算 1 人）</span></th><th>初診週次</th><th>初診人次</th></tr></thead><tbody>';
     for (const x of docList) {
       html += `<tr><td>${escapeHtml(x.doctor)}</td><td>${x.count}</td><td><b>${x.persons}</b></td>
                    <td style="color:#7c3aed">${x.first || '<span style="color:#cbd5e1">·</span>'}</td>
@@ -1322,7 +1324,7 @@ const F = (o, k) => (o && o[k] !== undefined && o[k] !== null) ? o[k] : 0;
  * 儀表板（依上傳區間）與自訂日期區間檢視共用同一套邏輯，數字定義保證一致。
  */
 function buildCompareTables(curRC, prvRC, curRCD, prvRCD, curRD, prvRD, HF) {
-  const fTh = HF ? '<th>初診筆數</th><th>初診人次</th><th>初診人次變化</th>' : '';
+  const fTh = HF ? '<th>初診週次</th><th>初診人次</th><th>初診人次變化</th>' : '';
   const fTd = (c, p) => HF
     ? `<td style="color:#7c3aed">${F(c,'first')}</td>
        <td style="color:#7c3aed"><b>${F(c,'firstPersons')}</b></td>
@@ -1634,7 +1636,7 @@ function exportMatrix() {
   // 第二分頁：各醫師初診（後端有提供 first 才輸出）
   if (dashHasFirst()) {
     const fr = [];
-    fr.push(['金鶯診所　減重門診　各醫師初診筆數（labeno 含「初」或「出」）']);
+    fr.push(['金鶯診所　減重門診　各醫師初診週次（labeno 含「初」或「出」）']);
     fr.push([]);
     fr.push(['院區', '醫師', ...periodLabels, '合計']);
     let gTot = ranges.map(() => 0);
@@ -1793,7 +1795,7 @@ function renderCustomView() {
     <div class="stat"><div class="num">${cvData.days}</div><div class="label">天數（${cvData.label}）</div></div>
     <div class="stat"><div class="num" style="color:#166534">${count}</div><div class="label">週次（=筆數）</div></div>
     <div class="stat"><div class="num" style="color:#1d4ed8">${persons}</div><div class="label">人次（各院區加總）</div></div>
-    <div class="stat"><div class="num" style="color:#7c3aed">${first}</div><div class="label">初診筆數 ／ 人次 <b>${firstP}</b></div></div>
+    <div class="stat"><div class="num" style="color:#7c3aed">${first}</div><div class="label">初診週次 ／ 人次 <b>${firstP}</b></div></div>
     <div class="stat"><div class="num">${cliN}</div><div class="label">有資料院區數</div></div>`;
 
   // 提醒
@@ -1829,7 +1831,7 @@ document.getElementById('cvExport').addEventListener('click', () => {
   const rows = [];
   rows.push(['金鶯診所　減重門診　自訂區間統計　' + cvData.label + '（' + cvData.days + ' 天）']);
   rows.push([]);
-  rows.push(['院區', '醫師', '週次（=筆數）', '人次', '初診筆數', '初診人次']);
+  rows.push(['院區', '醫師', '週次（=筆數）', '人次', '初診週次', '初診人次']);
   const clinics = Object.keys(cvData.byClinicDoc).sort();
   for (const cli of clinics) {
     const docs = Object.keys(cvData.byClinicDoc[cli]).sort((a, b) => {
