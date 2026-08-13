@@ -447,7 +447,16 @@
       <button class="btn secondary cv-quick" data-q="lastmonth" style="padding:4px 10px;font-size:11.5px">上個月</button>
       <button class="btn secondary cv-quick" data-q="all" style="padding:4px 10px;font-size:11.5px">全部資料</button>
       <label style="margin-left:12px;cursor:pointer"><input type="checkbox" id="cvCompare" checked> 與前一個等長區間比較</label>
-      <label style="cursor:pointer"><input type="checkbox" id="cvDedupe" checked> 去除重複列</label>
+    </div>
+
+    <div id="cvFilterBar" class="hidden" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px;padding:9px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:12.5px">
+      <span style="font-weight:600;color:#334155">篩選</span>
+      <label style="color:#475569">院區</label>
+      <select id="cvClinicSel" style="padding:5px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:12.5px;min-width:110px"></select>
+      <label style="color:#475569;margin-left:6px">醫師</label>
+      <select id="cvDoctorSel" style="padding:5px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:12.5px;min-width:130px"></select>
+      <button class="btn secondary" id="cvClearFilter" style="padding:4px 12px;font-size:11.5px">清除</button>
+      <span id="cvFilterInfo" style="margin-left:auto;color:#64748b"></span>
     </div>
 
     <div id="cvEmpty" style="font-size:13px;color:#94a3b8;padding:10px 0">
@@ -464,11 +473,12 @@
       <div class="section-title" style="margin-top:16px">👨‍⚕️ 各院區×醫師</div>
       <table class="dt" id="cvTableClinicDoc"></table>
 
-      <div class="section-title" style="margin-top:16px">🧑‍🤝‍🧑 醫師跨院區總計</div>
+      <div class="section-title" style="margin-top:16px" id="cvDocTitle">🧑‍🤝‍🧑 醫師跨院區總計</div>
       <table class="dt" id="cvTableDoc"></table>
 
       <div style="font-size:11px;color:#94a3b8;margin-top:6px">
-        依明細的就診日期（date 欄）逐筆判定，與上傳時填的「日期區間」無關。人次／週次／初診的定義與上方儀表板完全相同。
+        依明細的就診日期（date 欄）逐筆判定，與上傳時填的「日期區間」無關。人次／週次／初診的定義與上方儀表板完全相同。<br>
+        週次＝明細列數，<b>不做任何去重</b>——資料庫用重複列表示週數（減2W 佔 2 列、減4W 佔 4 列），去重會直接砍掉週次。
       </div>
     </div>
   </div>
@@ -1730,7 +1740,7 @@ document.addEventListener('click', e => {
 });
 
 document.getElementById('cvGo').addEventListener('click', cvLoad);
-['cvCompare','cvDedupe'].forEach(id => {
+['cvCompare'].forEach(id => {
   const el = document.getElementById(id);
   if (el) el.addEventListener('change', () => { if (cvData) cvLoad(); });
 });
@@ -1747,10 +1757,9 @@ async function cvLoad() {
   st.textContent = ''; st.style.color = '#64748b';
   const ep = getEndpoint();
   const cmp = document.getElementById('cvCompare').checked ? '1' : '0';
-  const ded = document.getElementById('cvDedupe').checked ? '1' : '0';
   const url = ep + (ep.includes('?') ? '&' : '?')
             + 'action=custom&from=' + encodeURIComponent(from) + '&to=' + encodeURIComponent(to)
-            + '&compare=' + cmp + '&dedupe=' + ded;
+            + '&compare=' + cmp;
   try {
     const resp = await fetch(url);
     const obj = JSON.parse(await resp.text());
@@ -1768,6 +1777,69 @@ async function cvLoad() {
   }
 }
 
+// 依「院區／醫師」篩選三組統計。單一院區或單一醫師時數字都是精確的
+// （單一醫師的院區列＝該醫師在該院區的值，不會有跨院區人次重複計算的問題）。
+function cvApplyFilter(byClinic, byClinicDoc, byDoctor, cli, doc) {
+  if (!cli && !doc) return { c: byClinic, cd: byClinicDoc, d: byDoctor };
+  const cd = {}, c = {}, d = {};
+  for (const k of Object.keys(byClinicDoc)) {
+    if (cli && k !== cli) continue;
+    for (const dd of Object.keys(byClinicDoc[k])) {
+      if (doc && dd !== doc) continue;
+      if (!cd[k]) cd[k] = {};
+      cd[k][dd] = byClinicDoc[k][dd];
+    }
+  }
+  for (const k of Object.keys(cd)) {
+    c[k] = doc ? (Object.values(cd[k])[0] || {}) : (byClinic[k] || {});
+  }
+  if (cli) {
+    for (const dd of Object.keys(cd[cli] || {})) d[dd] = cd[cli][dd];
+  } else if (doc) {
+    d[doc] = byDoctor[doc] || {};
+  }
+  return { c, cd, d };
+}
+
+function cvSyncFilterOptions() {
+  const cs = document.getElementById('cvClinicSel');
+  const ds = document.getElementById('cvDoctorSel');
+  if (!cvData || !cvData.byClinicDoc) return;
+  const cd = cvData.byClinicDoc;
+  const clinics = Object.keys(cd).sort();
+  const prevC = cs.value, prevD = ds.value;
+  cs.innerHTML = '<option value="">全部院區</option>'
+               + clinics.map(x => `<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join('');
+  cs.value = clinics.includes(prevC) ? prevC : '';
+  const pool = new Set();
+  for (const k of clinics) {
+    if (cs.value && k !== cs.value) continue;
+    for (const dd of Object.keys(cd[k])) pool.add(dd);
+  }
+  const docs = [...pool].sort((a, b) => a === '減重拿藥' ? 1 : b === '減重拿藥' ? -1 : a.localeCompare(b, 'zh'));
+  ds.innerHTML = '<option value="">全部醫師</option>'
+               + docs.map(x => `<option value="${escapeHtml(x)}">${escapeHtml(x)}</option>`).join('');
+  ds.value = docs.includes(prevD) ? prevD : '';
+  document.getElementById('cvFilterBar').classList.remove('hidden');
+}
+
+document.addEventListener('change', e => {
+  if (!e.target) return;
+  if (e.target.id === 'cvClinicSel') { cvSyncFilterOptions(); renderCustomView(); }
+  else if (e.target.id === 'cvDoctorSel') renderCustomView();
+});
+document.addEventListener('click', e => {
+  if (e.target && e.target.id === 'cvClearFilter') {
+    const cs = document.getElementById('cvClinicSel'), ds = document.getElementById('cvDoctorSel');
+    if (cs) cs.value = ''; if (ds) ds.value = '';
+    cvSyncFilterOptions(); renderCustomView();
+  }
+});
+function cvGetFilter() {
+  const cs = document.getElementById('cvClinicSel'), ds = document.getElementById('cvDoctorSel');
+  return { cli: cs ? cs.value : '', doc: ds ? ds.value : '' };
+}
+
 function renderCustomView() {
   const empty = document.getElementById('cvEmpty');
   const content = document.getElementById('cvContent');
@@ -1779,18 +1851,25 @@ function renderCustomView() {
   }
   empty.classList.add('hidden');
   content.classList.remove('hidden');
+  cvSyncFilterOptions();
 
-  // 摘要
+  const { cli: fCli, doc: fDoc } = cvGetFilter();
+  const CUR = cvApplyFilter(cvData.byClinic || {}, cvData.byClinicDoc || {}, cvData.byDoctor || {}, fCli, fDoc);
+  const PRV = cvApplyFilter(cvData.prevByClinic || {}, cvData.prevByClinicDoc || {}, cvData.prevByDoctor || {}, fCli, fDoc);
+
+  // 摘要（跟著篩選走）
   let persons = 0, count = 0, first = 0, firstP = 0;
-  const seenP = {}, seenFP = {};
-  for (const cli in cvData.byClinic) {
-    const c = cvData.byClinic[cli];
+  for (const cli in CUR.c) {
+    const c = CUR.c[cli];
     count += c.count || 0;
     persons += c.persons || 0;      // 跨院區不去重（同儀表板慣例）
     first += c.first || 0;
     firstP += c.firstPersons || 0;
   }
-  const cliN = Object.keys(cvData.byClinic).length;
+  const cliN = Object.keys(CUR.c).length;
+  const fi = document.getElementById('cvFilterInfo');
+  if (fi) fi.textContent = (!fCli && !fDoc) ? '未篩選（顯示全部）'
+        : '目前只看：' + [fCli, fDoc].filter(Boolean).join(' / ');
   document.getElementById('cvSummary').innerHTML = `
     <div class="stat"><div class="num">${cvData.days}</div><div class="label">天數（${cvData.label}）</div></div>
     <div class="stat"><div class="num" style="color:#166534">${count}</div><div class="label">週次（=筆數）</div></div>
@@ -1801,7 +1880,6 @@ function renderCustomView() {
   // 提醒
   const warn = document.getElementById('cvWarn');
   const msgs = [];
-  if (cvData.dupSkipped) msgs.push('已略過 ' + cvData.dupSkipped + ' 筆完全重複的列（同院區/醫師/病患/日期/labeno）。');
   if (cvData.invalidTotal) {
     msgs.push('資料庫中有 ' + cvData.invalidTotal + ' 筆日期不合法（例如 7/32），這些列可能落在任何區間之外而漏算。範例：'
               + escapeHtml((cvData.invalidSamples || []).join('、')));
@@ -1815,37 +1893,39 @@ function renderCustomView() {
                  + (cvData.prevLabel ? ' vs ' + cvData.prevLabel + '（' + cvData.prevRows + ' 筆）' : '');
 
   const HF = cvData.hasFirst !== false;
-  const t = buildCompareTables(
-    cvData.byClinic    || {}, cvData.prevByClinic    || {},
-    cvData.byClinicDoc || {}, cvData.prevByClinicDoc || {},
-    cvData.byDoctor    || {}, cvData.prevByDoctor    || {}, HF);
+  const t = buildCompareTables(CUR.c, PRV.c, CUR.cd, PRV.cd, CUR.d, PRV.d, HF);
   document.getElementById('cvTableClinic').innerHTML = t.clinic;
   document.getElementById('cvTableClinicDoc').innerHTML = t.clinicDoc;
   document.getElementById('cvTableDoc').innerHTML = t.doctor;
+  const dt = document.getElementById('cvDocTitle');
+  if (dt) dt.textContent = fCli ? ('🧑‍🤝‍⚕️ ' + fCli + ' 各醫師') : '🧑‍🤝‍🧑 醫師跨院區總計';
 }
 
 // 匯出自訂區間（院區×醫師）
 document.getElementById('cvExport').addEventListener('click', () => {
   if (typeof XLSX === 'undefined') { alert('XLSX 函式庫未載入，請等幾秒再試'); return; }
   if (!cvData || cvData.empty) { alert('請先查詢一個有資料的區間'); return; }
+  const { cli: fCli, doc: fDoc } = cvGetFilter();
+  const E = cvApplyFilter(cvData.byClinic || {}, cvData.byClinicDoc || {}, cvData.byDoctor || {}, fCli, fDoc);
   const rows = [];
-  rows.push(['金鶯診所　減重門診　自訂區間統計　' + cvData.label + '（' + cvData.days + ' 天）']);
+  rows.push(['金鶯診所　減重門診　自訂區間統計　' + cvData.label + '（' + cvData.days + ' 天）'
+             + ((fCli || fDoc) ? '　篩選：' + [fCli, fDoc].filter(Boolean).join(' / ') : '')]);
   rows.push([]);
   rows.push(['院區', '醫師', '週次（=筆數）', '人次', '初診週次', '初診人次']);
-  const clinics = Object.keys(cvData.byClinicDoc).sort();
+  const clinics = Object.keys(E.cd).sort();
   for (const cli of clinics) {
-    const docs = Object.keys(cvData.byClinicDoc[cli]).sort((a, b) => {
+    const docs = Object.keys(E.cd[cli]).sort((a, b) => {
       if (a === '減重拿藥') return 1;
       if (b === '減重拿藥') return -1;
       return a.localeCompare(b, 'zh');
     });
     let f = true;
     for (const doc of docs) {
-      const x = cvData.byClinicDoc[cli][doc];
+      const x = E.cd[cli][doc];
       rows.push([f ? cli : '', doc, x.count || 0, x.persons || 0, x.first || 0, x.firstPersons || 0]);
       f = false;
     }
-    const c = cvData.byClinic[cli] || {};
+    const c = E.c[cli] || {};
     rows.push(['', '院區合計', c.count || 0, c.persons || 0, c.first || 0, c.firstPersons || 0]);
   }
   const ws = XLSX.utils.aoa_to_sheet(rows);
@@ -1857,7 +1937,8 @@ document.getElementById('cvExport').addEventListener('click', () => {
   const blob = new Blob([buf], { type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = '自訂區間統計_' + cvData.label + '.xlsx';
+  const suffix = [fCli, fDoc].filter(Boolean).join('_');
+  a.href = url; a.download = '自訂區間統計_' + cvData.label + (suffix ? '_' + suffix : '') + '.xlsx';
   document.body.appendChild(a); a.click();
   setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 100);
 });
