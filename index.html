@@ -358,8 +358,8 @@
       </div>
       <p class="dz-title">點此選擇或拖曳 XLSX 檔案</p>
       <p class="dz-sub">
-        可一次選多檔（13 個院區）批次處理<br>
-        檔名建議為 <code>院區+日期區間.xlsx</code>，例如 <code>三樹0511-0524.xlsx</code>；<br>
+        <b>後台批次匯出檔</b>（一個檔案、每個院區一個分頁）直接拖進來即可，院區與期間自動從檔案內讀取<br>
+        舊格式：可一次選多檔批次處理，檔名為 <code>院區+日期區間.xlsx</code>，例如 <code>三樹0511-0524.xlsx</code>；<br>
         <b>若檔名沒有區間</b>，請在上方切成「手動指定」自選區間
       </p>
       <span class="dz-hint">支援 .xlsx / .xls，拖檔或點擊皆可</span>
@@ -546,7 +546,10 @@
       <b>核心邏輯：</b>只要符合以下條件，全部保留 → 寧可錯抓不漏抓。<br>
       ① <b>含「減」或「檢」</b>（容錯：簡/鑑）<br>
       ② <b>結尾不能是</b> <code>T00</code><br>
-      ③ <b>不是純「減免」</b>類型（純減免、減免XX 等無減重特徵者排除）<br><br>
+      ③ <b>不是純「減免」</b>類型（純減免、減免XX 等無減重特徵者排除）<br>
+      ④ <b>不含「退掛」</b>（沒有實際看診）<br>
+      ⑤ <b>例外：「減免」但有收費</b>（後台批次檔）照算，週次依金額換算：
+      <code>1380</code>=1W、<code>2580</code>=2W、<code>3780</code>=3W、<code>4980</code>=4W（每多一週 +1200）；0 元的不算<br><br>
       <b>因此這些都會保留：</b>
       <code>減1W</code> <code>減拿2</code> <code>R減*2W</code> <code>C M減1.3</code>
       <code>S減2*</code> <code>減R2W!</code> <code>R減2周@</code> <code>減c*2w</code>
@@ -577,6 +580,7 @@ function matchRule(s) {
   if (s === undefined || s === null || s === '') return false;
   s = String(s).trim();
   if (s.endsWith('T00')) return false;        // 排除 T00 結尾
+  if (s.includes('退掛')) return false;        // 排除退掛（沒有實際看診）
   if (!reJian.test(s)) return false;          // 必須含減/檢/簡/鑑
   // 排除純「減免」（沒有數字、沒有拿/初/出/楚、沒有 W/w/周）
   if (/^減免/.test(s) && !/[0-9拿那哪納拎初出除楚Ww周]/.test(s)) return false;
@@ -591,6 +595,125 @@ const reChu = new RegExp('[' + FIRST_CHARS + ']');
 function isFirstVisit(s) {
   if (s === undefined || s === null || s === '') return false;
   return reChu.test(String(s));
+}
+
+// ===== 「減免」但有收費：依金額換算週數 =====
+// 1380 = 1 週，之後每多 1 週 +1200（2580=2W、3780=3W、4980=4W…）
+// 同一病患同一天的多列算同一次就診，取該次最大金額換算
+function waiverCandidate(s) {
+  if (s === undefined || s === null) return false;
+  s = String(s).trim();
+  return /^減免/.test(s) && !s.includes('退掛') && !matchRule(s);
+}
+function feeToWeeks(fee) {
+  const f = Number(fee) || 0;
+  if (f >= 1380 && (f - 1380) % 1200 === 0) return (f - 1380) / 1200 + 1;
+  return 0;
+}
+
+// ===== 後台批次匯出檔（一個檔案、每個分頁一個院區）=====
+// 分頁格式：上方有「期間 115/10/12 ~ 115/10/25」，表頭列含 病歷號／醫師／就診日期／說明／小計
+function findBackendHeader(rows) {
+  for (let r = 0; r < Math.min(rows.length, 40); r++) {
+    const row = (rows[r] || []).map(v => v == null ? '' : String(v).trim());
+    if (row.includes('病歷號') && row.includes('說明')) {
+      const at = name => row.indexOf(name);
+      return { headerRow: r, kcstmr: at('病歷號'), labeno: at('說明'), doctor: at('醫師'),
+               date: at('就診日期'), dyangle: at('診別'), fee: at('小計') };
+    }
+  }
+  return null;
+}
+function isBackendWorkbook(wb) {
+  return wb.SheetNames.some(n => {
+    const rows = XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '', raw: true });
+    return !!findBackendHeader(rows);
+  });
+}
+function backendMeta(rows) {
+  let period = '', order = '';
+  for (let r = 0; r < Math.min(rows.length, 15); r++) {
+    const k = String((rows[r] || [])[0] || '').trim();
+    if (k === '期間') period = String(rows[r][1] || '');
+    if (k === '醫令') order = String(rows[r][1] || '').trim();
+  }
+  // 115/10/12 ~ 115/10/25 → 1012-1025
+  const m = period.match(/\d{2,3}\/(\d{1,2})\/(\d{1,2})\s*~\s*\d{2,3}\/(\d{1,2})\/(\d{1,2})/);
+  const pad = x => String(x).padStart(2, '0');
+  const dateRange = m ? pad(m[1]) + pad(m[2]) + '-' + pad(m[3]) + pad(m[4]) : '';
+  return { dateRange, order };
+}
+// 115/10/12 → 1151012（與舊檔 date 欄格式一致）
+function rocDateCompact(v) {
+  const m = String(v == null ? '' : v).match(/^(\d{2,3})\/(\d{1,2})\/(\d{1,2})$/);
+  return m ? m[1] + m[2].padStart(2, '0') + m[3].padStart(2, '0') : (v == null ? '' : v);
+}
+function processBackendSheet(ws, sheetName) {
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true, blankrows: true });
+  const cols = findBackendHeader(rows);
+  const meta = backendMeta(rows);
+  const clinic = String(sheetName).trim().replace(/(院區|診所)$/, '');
+  if (!cols) return { skip: '沒有明細', clinic, dateRange: meta.dateRange };
+  if (/藥局$/.test(sheetName) || (meta.order && meta.order !== '不限'))
+    return { skip: '非減重報表（醫令篩選）', clinic, dateRange: meta.dateRange };
+
+  // 醫師欄必須是姓名：若是身分證號格式，擋下不上傳（避免醫師對不上，也避免個資寫進資料庫）
+  if (cols.doctor >= 0) {
+    const idLike = rows.slice(cols.headerRow + 1).some(r =>
+      /^[A-Z][12489]\d{8}$/.test(String((r || [])[cols.doctor] || '').trim()));
+    if (idLike) return { skip: '醫師欄是身分證號，請重新匯出（醫師姓名）', clinic, dateRange: meta.dateRange };
+  }
+
+  const allPersons = {}, allFirstPersons = {}, removedCounter = {}, waiverGroups = {};
+  const keptStruct = [];
+  let total = 0, firstN = 0;
+  for (const r of rows.slice(cols.headerRow + 1)) {
+    const kc = r[cols.kcstmr] == null ? '' : String(r[cols.kcstmr]).trim();
+    if (!kc || kc.startsWith('※')) continue;
+    total++;
+    const v = r[cols.labeno];
+    const rec = {
+      診別: cols.dyangle >= 0 ? r[cols.dyangle] : '',
+      醫師: cols.doctor >= 0 ? r[cols.doctor] : '',
+      kcstmr: kc,
+      date: cols.date >= 0 ? rocDateCompact(r[cols.date]) : '',
+      labeno: v
+    };
+    if (matchRule(v)) {
+      keptStruct.push(rec);
+      allPersons[kc] = true;
+      if (isFirstVisit(v)) { firstN++; allFirstPersons[kc] = true; }
+    } else if (waiverCandidate(v)) {
+      const key = kc + '|' + rec.date;
+      const fee = cols.fee >= 0 ? Number(r[cols.fee]) || 0 : 0;
+      if (!waiverGroups[key]) waiverGroups[key] = { rec, rows: 0, fee: 0, label: String(v).trim() };
+      waiverGroups[key].rows++;
+      waiverGroups[key].fee = Math.max(waiverGroups[key].fee, fee);
+    } else {
+      const key = (v === '' || v == null) ? '(空白)' : String(v);
+      removedCounter[key] = (removedCounter[key] || 0) + 1;
+    }
+  }
+  // 減免：有收費才算，週次依金額；0 元的列入刪除明細
+  for (const g of Object.values(waiverGroups)) {
+    const w = feeToWeeks(g.fee);
+    if (w > 0) {
+      for (let i = 0; i < w; i++) keptStruct.push(Object.assign({}, g.rec));
+      allPersons[g.rec.kcstmr] = true;
+    } else {
+      const key = g.label + '（未收費）';
+      removedCounter[key] = (removedCounter[key] || 0) + g.rows;
+    }
+  }
+  const removedN = Object.values(removedCounter).reduce((a, b) => a + b, 0);
+  return {
+    clinic, dateRange: meta.dateRange, total,
+    kept: keptStruct.length, removed: removedN,
+    persons: Object.keys(allPersons).length,
+    firstCount: firstN, firstPersons: Object.keys(allFirstPersons).length,
+    removedDetail: Object.entries(removedCounter).sort((a, b) => b[1] - a[1]).map(([k, n]) => k + '×' + n).join('、'),
+    rows: keptStruct
+  };
 }
 
 // ===== 檔名解析 =====
@@ -1058,6 +1181,8 @@ function handleFile(file) {
     return;
   }
   readWorkbook(file).then(wb => {
+    // 後台批次匯出檔：一個檔案含多個院區分頁 → 走批次流程
+    if (isBackendWorkbook(wb)) { handleBatch([file]); return; }
     try { processWorkbook(wb, file.name); }
     catch (err) { errBox.textContent = '處理失敗：' + (err && err.message ? err.message : err); }
   }).catch(err => { errBox.textContent = '讀取檔案失敗：' + err.message; });
@@ -1079,11 +1204,21 @@ async function handleBatch(files) {
   const batchBar = document.getElementById('batchBar');
   batchBox.classList.remove('hidden');
 
-  // 初始化表格
-  const items = Array.from(files).map(f => ({
-    name: f.name, file: f, status: '等待中', kept: 0, removed: 0, persons: 0, first: 0,
-    clinic: '', dateRange: ''
-  }));
+  // 初始化表格：後台批次匯出檔會展開成「每個院區分頁一列」
+  const items = [];
+  for (const f of Array.from(files)) {
+    let wb = null;
+    try { wb = await readWorkbook(f); } catch (e) {}
+    if (wb && isBackendWorkbook(wb)) {
+      for (const sn of wb.SheetNames) {
+        items.push({ name: f.name + '｜' + sn, wb, sheet: sn, status: '等待中', kept: 0, removed: 0,
+                     persons: 0, first: 0, clinic: '', dateRange: '' });
+      }
+    } else {
+      items.push({ name: f.name, file: f, wb, status: '等待中', kept: 0, removed: 0, persons: 0, first: 0,
+                   clinic: '', dateRange: '' });
+    }
+  }
   function render() {
     let html = '<div class="batch-row head">' +
                '<div>檔名</div><div>院區</div><div>區間</div>' +
@@ -1094,6 +1229,7 @@ async function handleBatch(files) {
       if (it.status === '處理中') { rowCls = 'running'; statCls = 'running'; statTxt = '處理中'; }
       else if (it.status === '完成') { rowCls = 'ok'; statCls = 'ok'; statTxt = '已上傳'; }
       else if (it.status === '重複') { rowCls = 'dup'; statCls = 'dup'; statTxt = '已上傳過'; }
+      else if (it.status === '略過') { rowCls = 'dup'; statCls = 'dup'; statTxt = it.error || '略過'; }
       else if (it.status === '失敗') { rowCls = 'err'; statCls = 'err'; statTxt = it.error || '失敗'; }
       html += `<div class="batch-row ${rowCls}">
                 <div class="fn" title="${escapeHtml(it.name)}">${escapeHtml(it.name)}</div>
@@ -1117,8 +1253,20 @@ async function handleBatch(files) {
     batchBar.style.width = (done / items.length * 100) + '%';
     render();
     try {
-      const wb = await readWorkbook(it.file);
-      const result = processFileForBatch(wb, it.name);
+      let result;
+      if (it.sheet) {
+        result = processBackendSheet(it.wb.Sheets[it.sheet], it.sheet);
+        if (!result.dateRange) { const mr = getManualRange(); if (mr) result.dateRange = mr; }
+        if (result.skip) {
+          it.clinic = result.clinic; it.dateRange = result.dateRange;
+          it.status = '略過'; it.error = result.skip;
+          render(); done++;
+          continue;
+        }
+      } else {
+        const wb = it.wb || await readWorkbook(it.file);
+        result = processFileForBatch(wb, it.name);
+      }
       it.clinic = result.clinic;
       it.dateRange = result.dateRange;
       it.kept = result.kept;
